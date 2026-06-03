@@ -2,8 +2,9 @@
 
 The topology models ten routers split into two five-router rings. Router A in the
 first ring bridges to router F in the second ring. Each router has one directly
-attached switch. Servers are assigned to the second ring's server/edge network,
-while client and IoT devices are assigned to the first ring's access network.
+attached switch. Internal servers attach only to Router F's switch, web/edge
+servers attach only to Router G's switch, and client/IoT devices attach to the
+remaining switches in the second router ring.
 """
 
 from __future__ import annotations
@@ -27,9 +28,15 @@ DEVICE_COUNTS = {
 
 ROUTER_NAMES = tuple("ABCDEFGHIJ")
 SWITCH_NAMES = tuple(f"switch_{router}" for router in ROUTER_NAMES)
-CLIENT_NETWORK_ROUTERS = ROUTER_NAMES[:5]
-SERVER_NETWORK_ROUTERS = ROUTER_NAMES[5:]
-SERVER_CATEGORIES = {"internal_server", "web_edge_server"}
+INTERNAL_SERVER_ROUTER = "F"
+WEB_EDGE_SERVER_ROUTER = "G"
+CLIENT_IOT_ROUTERS = ROUTER_NAMES[7:]
+CATEGORY_ROUTER_ASSIGNMENTS = {
+    "client_workstation": CLIENT_IOT_ROUTERS,
+    "internal_server": (INTERNAL_SERVER_ROUTER,),
+    "web_edge_server": (WEB_EDGE_SERVER_ROUTER,),
+    "iot_peripheral": CLIENT_IOT_ROUTERS,
+}
 RNG_SEED = 42
 
 
@@ -143,27 +150,31 @@ def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
 
 
 def _switch_ids_for_category(category: str) -> tuple[str, ...]:
-    """Return the switch pool used by each endpoint category."""
-    router_names = (
-        SERVER_NETWORK_ROUTERS
-        if category in SERVER_CATEGORIES
-        else CLIENT_NETWORK_ROUTERS
+    """Return the exact switch pool used by each endpoint category."""
+    return tuple(
+        f"switch_{router_name}"
+        for router_name in CATEGORY_ROUTER_ASSIGNMENTS[category]
     )
-    return tuple(f"switch_{router_name}" for router_name in router_names)
 
 
 def _network_name_for_category(category: str) -> str:
-    """Keep server endpoints in the server/edge network instead of spreading them."""
-    if category in SERVER_CATEGORIES:
-        return "server_edge_network"
+    """Label endpoint categories by their logical second-ring role."""
+    if category == "internal_server":
+        return "internal_server_network"
+    if category == "web_edge_server":
+        return "web_edge_server_network"
     return "client_iot_network"
 
 
 def _network_name_for_router(router_name: str) -> str:
-    """Map each router ring to its logical access network."""
-    if router_name in SERVER_NETWORK_ROUTERS:
-        return "server_edge_network"
-    return "client_iot_network"
+    """Map routers to their logical access role in the simulated topology."""
+    if router_name == INTERNAL_SERVER_ROUTER:
+        return "internal_server_network"
+    if router_name == WEB_EDGE_SERVER_ROUTER:
+        return "web_edge_server_network"
+    if router_name in CLIENT_IOT_ROUTERS:
+        return "client_iot_network"
+    return "backbone_network"
 
 
 def _validate_network(graph: nx.Graph) -> None:
@@ -193,23 +204,25 @@ def _validate_network(graph: nx.Graph) -> None:
         if not graph.has_edge(router_id, switch_id):
             raise ValueError(f"Missing router-switch edge: {(router_id, switch_id)}")
 
-    server_switches = set(_switch_ids_for_category("internal_server"))
-    misplaced_servers = []
+    misplaced_endpoints = []
     for node, attributes in graph.nodes(data=True):
-        if attributes["category"] not in SERVER_CATEGORIES:
+        category = attributes["category"]
+        if category == "router_switch":
             continue
+
+        allowed_switches = set(_switch_ids_for_category(category))
         access_switches = [
             neighbor
             for neighbor in graph.neighbors(node)
             if graph.nodes[neighbor]["device_type"] == "switch"
         ]
-        if len(access_switches) != 1 or access_switches[0] not in server_switches:
-            misplaced_servers.append((node, tuple(access_switches)))
+        if len(access_switches) != 1 or access_switches[0] not in allowed_switches:
+            misplaced_endpoints.append((node, tuple(access_switches), category))
 
-    if misplaced_servers:
+    if misplaced_endpoints:
         raise ValueError(
-            "Server nodes must attach only to the server/edge network switches: "
-            f"{misplaced_servers}"
+            "Endpoint nodes must attach only to their assigned router switches: "
+            f"{misplaced_endpoints}"
         )
 
 
@@ -325,9 +338,10 @@ def print_summary(graph: nx.Graph) -> None:
     print("Router backbone edges:")
     for source, target in ROUTER_RING_EDGES:
         print(f"  {source} -- {target}")
-    print("Server nodes attach only to:")
-    for switch_id in _switch_ids_for_category("internal_server"):
-        print(f"  {switch_id}")
+    print("Endpoint switch assignments:")
+    for category in ENDPOINT_CATEGORIES:
+        switch_list = ", ".join(_switch_ids_for_category(category))
+        print(f"  {CATEGORY_DISPLAY_NAMES[category]}: {switch_list}")
 
 
 if __name__ == "__main__":
