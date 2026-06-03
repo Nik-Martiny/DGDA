@@ -22,7 +22,8 @@ DEVICE_COUNTS = {
     "client_workstation": 80,
     "internal_server": 40,
     "web_edge_server": 30,
-    "router_switch": 20,
+    "router": 10,
+    "switch": 10,
     "iot_peripheral": 30,
 }
 
@@ -30,7 +31,7 @@ ROUTER_NAMES = tuple("ABCDEFGHIJ")
 SWITCH_NAMES = tuple(f"switch_{router}" for router in ROUTER_NAMES)
 INTERNAL_SERVER_ROUTER = "F"
 WEB_EDGE_SERVER_ROUTER = "G"
-CLIENT_IOT_ROUTERS = ROUTER_NAMES[7:]
+CLIENT_IOT_ROUTERS = ROUTER_NAMES[:5] + ROUTER_NAMES[7:]
 CATEGORY_ROUTER_ASSIGNMENTS = {
     "client_workstation": CLIENT_IOT_ROUTERS,
     "internal_server": (INTERNAL_SERVER_ROUTER,),
@@ -45,13 +46,15 @@ ROUTER_RING_EDGES = (
     ("router_B", "router_C"),
     ("router_C", "router_D"),
     ("router_D", "router_E"),
-    ("router_E", "router_A"),
-    ("router_A", "router_F"),
+    ("router_E", "router_A"), # Complete the loop
+
+    ("router_A", "router_F"), # Group A & B link
+
     ("router_F", "router_G"),
     ("router_G", "router_H"),
     ("router_H", "router_I"),
     ("router_I", "router_J"),
-    ("router_J", "router_F"),
+    ("router_J", "router_F"), # Complete the loop
 )
 
 
@@ -59,7 +62,8 @@ CATEGORY_DISPLAY_NAMES = {
     "client_workstation": "Client Workstations",
     "internal_server": "Internal Servers",
     "web_edge_server": "Web/Edge Servers",
-    "router_switch": "Routers/Switches",
+    "router": "Routers",
+    "switch": "Switches",
     "iot_peripheral": "IoT/Peripheral Devices",
 }
 
@@ -67,7 +71,8 @@ CATEGORY_COLORS = {
     "client_workstation": "#4E79A7",
     "internal_server": "#59A14F",
     "web_edge_server": "#F28E2B",
-    "router_switch": "#E15759",
+    "router": "#E15759",
+    "switch": "#A1B213",
     "iot_peripheral": "#B07AA1",
 }
 
@@ -87,18 +92,21 @@ ENDPOINT_PREFIXES = {
     "iot_peripheral": "iot-peripheral",
 }
 
-
 def create_network(seed: int = RNG_SEED) -> nx.Graph:
     """Create the 200-device network with the requested device categories."""
     graph = nx.Graph(name="Dynamic Graph Device Network")
     rng = np.random.default_rng(seed)
 
+    # Add the router/switch backbone
     _add_router_and_switch_layer(graph)
+
+    # Add the client/server/IoT device nodes
     _add_endpoint_devices(graph, rng)
+
+    # Make sure everything is where it is ment to be
     _validate_network(graph)
 
     return graph
-
 
 def _add_router_and_switch_layer(graph: nx.Graph) -> None:
     """Add ten routers, ten switches, two router rings, and router-switch links."""
@@ -108,14 +116,14 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
         network_name = _network_name_for_router(router_name)
         graph.add_node(
             router_id,
-            category="router_switch",
+            category="router",
             device_type="router",
             network=network_name,
             label=f"Router {router_name}",
         )
         graph.add_node(
             switch_id,
-            category="router_switch",
+            category="switch",
             device_type="switch",
             network=network_name,
             label=f"Switch {router_name}",
@@ -127,7 +135,6 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
         for source, target in ROUTER_RING_EDGES
     )
 
-
 def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
     """Attach endpoint devices to switches in their appropriate access network."""
     for category in ENDPOINT_CATEGORIES:
@@ -136,9 +143,15 @@ def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
         switch_ids = np.array(_switch_ids_for_category(category))
         network_name = _network_name_for_category(category)
 
+        # Iterate through the selected node count number of times
         for index in range(1, count + 1):
+            # Create a prefix for the current node to use as the node identifier
             device_id = f"{prefix}_{index:03d}"
+
+            # Select a random switch from the correct switch ideas to assign the node
             attached_switch = str(rng.choice(switch_ids))
+
+            # Add the node to the graph with the device_id, and other attributes
             graph.add_node(
                 device_id,
                 category=category,
@@ -146,8 +159,9 @@ def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
                 network=network_name,
                 label=f"{CATEGORY_DISPLAY_NAMES[category]} {index}",
             )
-            graph.add_edge(device_id, attached_switch, link_type="access")
 
+            # Add an edge for the current node and its chosen switch
+            graph.add_edge(device_id, attached_switch, link_type="access")
 
 def _switch_ids_for_category(category: str) -> tuple[str, ...]:
     """Return the exact switch pool used by each endpoint category."""
@@ -156,7 +170,6 @@ def _switch_ids_for_category(category: str) -> tuple[str, ...]:
         for router_name in CATEGORY_ROUTER_ASSIGNMENTS[category]
     )
 
-
 def _network_name_for_category(category: str) -> str:
     """Label endpoint categories by their logical second-ring role."""
     if category == "internal_server":
@@ -164,7 +177,6 @@ def _network_name_for_category(category: str) -> str:
     if category == "web_edge_server":
         return "web_edge_server_network"
     return "client_iot_network"
-
 
 def _network_name_for_router(router_name: str) -> str:
     """Map routers to their logical access role in the simulated topology."""
@@ -176,20 +188,22 @@ def _network_name_for_router(router_name: str) -> str:
         return "client_iot_network"
     return "backbone_network"
 
-
 def _validate_network(graph: nx.Graph) -> None:
     """Fail fast if the constructed graph drifts from the requested structure."""
+
+    # Check if there are the correct number of nodes in the graph
     if graph.number_of_nodes() != TOTAL_DEVICES:
         raise ValueError(
             f"Expected {TOTAL_DEVICES} devices, found {graph.number_of_nodes()}."
         )
-
+    # Check that the number of individual nodes is the same as the expected number of nodes for each device category
     actual_counts = Counter(nx.get_node_attributes(graph, "category").values())
     if actual_counts != DEVICE_COUNTS:
         raise ValueError(
             f"Device category counts do not match: {dict(actual_counts)} != {DEVICE_COUNTS}."
         )
 
+    # Check for any edges that are missing between core routers that make up the ring topology
     missing_backbone_edges = [
         (source, target)
         for source, target in ROUTER_RING_EDGES
@@ -198,16 +212,18 @@ def _validate_network(graph: nx.Graph) -> None:
     if missing_backbone_edges:
         raise ValueError(f"Missing router ring/bridge edges: {missing_backbone_edges}")
 
+    # Check that each router has its own switch edge in the graph
     for router_name in ROUTER_NAMES:
         router_id = f"router_{router_name}"
         switch_id = f"switch_{router_name}"
         if not graph.has_edge(router_id, switch_id):
             raise ValueError(f"Missing router-switch edge: {(router_id, switch_id)}")
 
+    # Check that all endpoint nodes (clients, servers, IoT devices) are where they are ment to be and not connected to some other network
     misplaced_endpoints = []
     for node, attributes in graph.nodes(data=True):
         category = attributes["category"]
-        if category == "router_switch":
+        if category == "router" or category == "switch":
             continue
 
         allowed_switches = set(_switch_ids_for_category(category))
@@ -225,11 +241,10 @@ def _validate_network(graph: nx.Graph) -> None:
             f"{misplaced_endpoints}"
         )
 
-
 def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.png") -> None:
     """Render the simulated network to a PNG image."""
     output_path = Path(output_path)
-    positions = _layout_positions(graph)
+    positions = nx.spring_layout(graph)
     node_colors = [CATEGORY_COLORS[graph.nodes[node]["category"]] for node in graph.nodes]
     node_sizes = []
     for node in graph.nodes:
@@ -255,8 +270,9 @@ def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.pn
     infrastructure_labels = {
         node: graph.nodes[node]["label"].replace("Router ", "R").replace("Switch ", "S")
         for node in graph.nodes
-        if graph.nodes[node]["category"] == "router_switch"
+        if graph.nodes[node]["category"] == "router" or graph.nodes[node]["category"] == "switch"
     }
+
     nx.draw_networkx_labels(graph, positions, labels=infrastructure_labels, font_size=8)
 
     legend_handles = [
@@ -271,60 +287,13 @@ def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.pn
         )
         for category, color in CATEGORY_COLORS.items()
     ]
+
     plt.legend(handles=legend_handles, loc="upper right")
     plt.title("200-Device Communication Network Simulation")
     plt.axis("off")
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     plt.close()
-
-
-def _layout_positions(graph: nx.Graph) -> dict[str, np.ndarray]:
-    """Create a deterministic layout that keeps each router's access devices nearby."""
-    positions: dict[str, np.ndarray] = {}
-    first_ring_angles = np.linspace(0, 2 * np.pi, 5, endpoint=False) + np.pi / 2
-    second_ring_angles = np.linspace(0, 2 * np.pi, 5, endpoint=False) + np.pi / 2
-    ring_centers = {"left": np.array([-4.0, 0.0]), "right": np.array([4.0, 0.0])}
-
-    for router_name, angle in zip(ROUTER_NAMES[:5], first_ring_angles):
-        positions[f"router_{router_name}"] = ring_centers["left"] + 1.7 * np.array(
-            [np.cos(angle), np.sin(angle)]
-        )
-    for router_name, angle in zip(ROUTER_NAMES[5:], second_ring_angles):
-        positions[f"router_{router_name}"] = ring_centers["right"] + 1.7 * np.array(
-            [np.cos(angle), np.sin(angle)]
-        )
-
-    for router_name in ROUTER_NAMES:
-        router_position = positions[f"router_{router_name}"]
-        ring_center = (
-            ring_centers["left"]
-            if router_name in ROUTER_NAMES[:5]
-            else ring_centers["right"]
-        )
-        direction = router_position - ring_center
-        direction = direction / np.linalg.norm(direction)
-        positions[f"switch_{router_name}"] = router_position + 0.9 * direction
-
-    for switch_id in SWITCH_NAMES:
-        switch_position = positions[switch_id]
-        attached_devices = sorted(
-            neighbor
-            for neighbor in graph.neighbors(switch_id)
-            if graph.nodes[neighbor]["category"] != "router_switch"
-        )
-        if not attached_devices:
-            continue
-
-        angles = np.linspace(0, 2 * np.pi, len(attached_devices), endpoint=False)
-        radius = 0.75 + min(len(attached_devices), 24) * 0.025
-        for device, angle in zip(attached_devices, angles):
-            positions[device] = switch_position + radius * np.array(
-                [np.cos(angle), np.sin(angle)]
-            )
-
-    return positions
-
 
 def print_summary(graph: nx.Graph) -> None:
     """Print a concise summary for command-line use."""
@@ -342,7 +311,6 @@ def print_summary(graph: nx.Graph) -> None:
     for category in ENDPOINT_CATEGORIES:
         switch_list = ", ".join(_switch_ids_for_category(category))
         print(f"  {CATEGORY_DISPLAY_NAMES[category]}: {switch_list}")
-
 
 if __name__ == "__main__":
     network = create_network()
