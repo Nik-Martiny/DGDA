@@ -1,0 +1,43 @@
+
+This project is a continuation of the Spectral Anomaly Detection Algorithm (SADA) paper
+written spring 2026.
+
+In this paper, we will cover several novel concepts regarding anomaly detection
+through use of Change-Point detection, Community Localization and Node ranking combined
+with help from a LLM for anomaly reporting.
+
+The main idea stems from the modeling of a communication network as a graph.
+
+Rather than looking at individual packets, we will treat the entire network as a social network map.
+
+* Every device (PC, server, router) is a **node**
+* Every communication between two nodes is an **edge**
+* The map will **evolve** over time (time-evolving graph)
+
+
+There are three main components that outline what "detected" means.
+
+* Step 1: Detect "When" something went wrong (Change-Point Detection) 
+    * Here we use two alarm systems (CUSUM and Page-Hinkley)
+    * Both watch signals derived from the graph and then fire an alert when those signals drift beyond normal bounds
+    * Answers the question *"At what moment did the network behavior change?"*
+* Step 2: Detect "Where" the attack is happening (Community Localization)
+    * **When** an anomalous time window is detected, the system will use the **Fiedler vector** and the **Louvian algorithm** to shape the network into communities.
+    * This will group devices that are communicating a lot with each other
+    * This answers the question *"Which group of devices is involved?"*
+* Step 3: Detect "Who" the key threat actors are (Node Ranking)
+    * There are three ranking methods that will identify the most angerous nodes
+    * K-core decomposition finds the dense core of the malicious cluster
+    * Betweenness centrality identifies any bridge nodes routing the attack traffic across the network
+    * Page Rank identifies the most influential/well-connected threat nodes
+    * This answers the question *"Which specific devices are driving the attack?"*
+
+Once all of these components are completed the LLM component will be utilized.
+It will take all the findings and will write a human-readable report:
+* When the anomaly happened
+* Which community is affected
+* Which nodes are at the highest risk
+
+This will allow analysts who aren't experts in graph theory the ability to 
+interpret the data collected and cast better judgment on how to handle the network.
+
