@@ -41,3 +41,23 @@ It will take all the findings and will write a human-readable report:
 This will allow analysts who aren't experts in graph theory the ability to 
 interpret the data collected and cast better judgment on how to handle the network.
 
+## Initial network simulation
+
+The first implementation step is available in `main.py`. It builds a deterministic
+NetworkX simulation with exactly 200 devices split across the requested categories:
+
+* 80 client workstations
+* 40 internal servers
+* 30 web/edge servers
+* 20 routers/switches
+* 30 IoT/peripheral devices
+
+The infrastructure layer contains two five-router rings: `router_A` through
+`router_E` and `router_F` through `router_J`. `router_A` also connects directly to
+`router_F` as the bridge between the two rings. Each router has one attached switch,
+and endpoint devices are connected to those switches. Running the script prints a
+summary and saves a visualization to `network_topology.png`.
+
+```bash
+python main.py
+```
