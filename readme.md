@@ -54,9 +54,12 @@ NetworkX simulation with exactly 200 devices split across the requested categori
 
 The infrastructure layer contains two five-router rings: `router_A` through
 `router_E` and `router_F` through `router_J`. `router_A` also connects directly to
-`router_F` as the bridge between the two rings. Each router has one attached switch,
-and endpoint devices are connected to those switches. Running the script prints a
-summary and saves a visualization to `network_topology.png`.
+`router_F` as the bridge between the two rings. Each router has one attached switch.
+Client and IoT devices attach to the first ring's access-network switches, while
+all internal and web/edge server nodes attach only to the second ring's
+server/edge-network switches instead of being dispersed across both networks.
+Running the script prints a summary and saves a visualization to
+`network_topology.png`.
 
 ```bash
 python main.py

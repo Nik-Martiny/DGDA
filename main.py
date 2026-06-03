@@ -2,8 +2,8 @@
 
 The topology models ten routers split into two five-router rings. Router A in the
 first ring bridges to router F in the second ring. Each router has one directly
-attached switch, and the remaining endpoint devices are distributed across those
-switches.
+attached switch. Servers are assigned to the second ring's server/edge network,
+while client and IoT devices are assigned to the first ring's access network.
 """
 
 from __future__ import annotations
@@ -27,6 +27,9 @@ DEVICE_COUNTS = {
 
 ROUTER_NAMES = tuple("ABCDEFGHIJ")
 SWITCH_NAMES = tuple(f"switch_{router}" for router in ROUTER_NAMES)
+CLIENT_NETWORK_ROUTERS = ROUTER_NAMES[:5]
+SERVER_NETWORK_ROUTERS = ROUTER_NAMES[5:]
+SERVER_CATEGORIES = {"internal_server", "web_edge_server"}
 RNG_SEED = 42
 
 
@@ -95,16 +98,19 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
     for router_name in ROUTER_NAMES:
         router_id = f"router_{router_name}"
         switch_id = f"switch_{router_name}"
+        network_name = _network_name_for_router(router_name)
         graph.add_node(
             router_id,
             category="router_switch",
             device_type="router",
+            network=network_name,
             label=f"Router {router_name}",
         )
         graph.add_node(
             switch_id,
             category="router_switch",
             device_type="switch",
+            network=network_name,
             label=f"Switch {router_name}",
         )
         graph.add_edge(router_id, switch_id, link_type="router_to_switch")
@@ -116,12 +122,12 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
 
 
 def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
-    """Attach all non-router/switch devices to the router-owned switches."""
-    switch_ids = np.array([f"switch_{router_name}" for router_name in ROUTER_NAMES])
-
+    """Attach endpoint devices to switches in their appropriate access network."""
     for category in ENDPOINT_CATEGORIES:
         count = DEVICE_COUNTS[category]
         prefix = ENDPOINT_PREFIXES[category]
+        switch_ids = np.array(_switch_ids_for_category(category))
+        network_name = _network_name_for_category(category)
 
         for index in range(1, count + 1):
             device_id = f"{prefix}_{index:03d}"
@@ -130,9 +136,34 @@ def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
                 device_id,
                 category=category,
                 device_type=category,
+                network=network_name,
                 label=f"{CATEGORY_DISPLAY_NAMES[category]} {index}",
             )
             graph.add_edge(device_id, attached_switch, link_type="access")
+
+
+def _switch_ids_for_category(category: str) -> tuple[str, ...]:
+    """Return the switch pool used by each endpoint category."""
+    router_names = (
+        SERVER_NETWORK_ROUTERS
+        if category in SERVER_CATEGORIES
+        else CLIENT_NETWORK_ROUTERS
+    )
+    return tuple(f"switch_{router_name}" for router_name in router_names)
+
+
+def _network_name_for_category(category: str) -> str:
+    """Keep server endpoints in the server/edge network instead of spreading them."""
+    if category in SERVER_CATEGORIES:
+        return "server_edge_network"
+    return "client_iot_network"
+
+
+def _network_name_for_router(router_name: str) -> str:
+    """Map each router ring to its logical access network."""
+    if router_name in SERVER_NETWORK_ROUTERS:
+        return "server_edge_network"
+    return "client_iot_network"
 
 
 def _validate_network(graph: nx.Graph) -> None:
@@ -161,6 +192,25 @@ def _validate_network(graph: nx.Graph) -> None:
         switch_id = f"switch_{router_name}"
         if not graph.has_edge(router_id, switch_id):
             raise ValueError(f"Missing router-switch edge: {(router_id, switch_id)}")
+
+    server_switches = set(_switch_ids_for_category("internal_server"))
+    misplaced_servers = []
+    for node, attributes in graph.nodes(data=True):
+        if attributes["category"] not in SERVER_CATEGORIES:
+            continue
+        access_switches = [
+            neighbor
+            for neighbor in graph.neighbors(node)
+            if graph.nodes[neighbor]["device_type"] == "switch"
+        ]
+        if len(access_switches) != 1 or access_switches[0] not in server_switches:
+            misplaced_servers.append((node, tuple(access_switches)))
+
+    if misplaced_servers:
+        raise ValueError(
+            "Server nodes must attach only to the server/edge network switches: "
+            f"{misplaced_servers}"
+        )
 
 
 def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.png") -> None:
@@ -275,6 +325,9 @@ def print_summary(graph: nx.Graph) -> None:
     print("Router backbone edges:")
     for source, target in ROUTER_RING_EDGES:
         print(f"  {source} -- {target}")
+    print("Server nodes attach only to:")
+    for switch_id in _switch_ids_for_category("internal_server"):
+        print(f"  {switch_id}")
 
 
 if __name__ == "__main__":
