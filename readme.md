@@ -103,3 +103,50 @@ Future attack implementations can pass an `attack_injector` callback to
 `create_dynamic_graph_windows()`. The callback is invoked only for windows 251-350,
 which prevents attack traffic from leaking into the baseline, pre-attack, or
 recovery phases.
+
+## Dynamic graph visualizations
+
+The simulation now includes three complementary visualization helpers for seeing
+how the graph changes across the discrete timing windows:
+
+* `animate_dynamic_graph_windows()` renders a Matplotlib `FuncAnimation` GIF that
+  advances sequentially through the generated windows. It uses a stable layout so
+  devices stay in the same place across frames, phase-colored backgrounds, a
+  timeline progress bar, category colors, and separate edge styling for backbone,
+  router/switch, access, and transient normal-traffic links.
+* `draw_connection_activity_heatmap()` creates a whole-simulation edge activity
+  heatmap. Columns are windows 1-500 and rows are every unique edge observed in
+  the run, making it easy to see when individual connections appear, disappear,
+  or persist across phases.
+* `draw_window_connection_matrix()` creates an adjacency-matrix view for a single
+  window. Nodes are ordered by device category so dense all-to-all connection
+  patterns are easier to inspect than in a crowded node-link drawing.
+
+Running the script writes these visual artifacts:
+
+```bash
+python main.py
+```
+
+Outputs:
+
+* `network_topology.png` — node-link snapshot for the first baseline window.
+* `connection_activity_heatmap.png` — all observed edges across all 500 windows.
+* `window_connection_matrix.png` — all node-to-node links in window 251.
+* `dynamic_graph_windows.gif` — the sequential FuncAnimation render.
+
+Programmatic use:
+
+```python
+from main import (
+    animate_dynamic_graph_windows,
+    create_dynamic_graph_windows,
+    draw_connection_activity_heatmap,
+    draw_window_connection_matrix,
+)
+
+windows = create_dynamic_graph_windows()
+animate_dynamic_graph_windows(windows, "dynamic_graph_windows.gif")
+draw_connection_activity_heatmap(windows, "connection_activity_heatmap.png")
+draw_window_connection_matrix(windows[250], "window_251_matrix.png")
+```
