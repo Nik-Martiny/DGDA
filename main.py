@@ -147,15 +147,12 @@ ROUTER_RING_EDGES = (
     ("router_B", "router_C"),
     ("router_C", "router_D"),
     ("router_D", "router_E"),
-    ("router_E", "router_A"),  # Complete the loop
-
-    ("router_A", "router_F"),  # Group A & B link
-
+    ("router_E", "router_F"),  # Complete the loop
     ("router_F", "router_G"),
     ("router_G", "router_H"),
     ("router_H", "router_I"),
     ("router_I", "router_J"),
-    ("router_J", "router_F"),  # Complete the loop
+    ("router_J", "router_A"),  # Complete the loop
 )
 
 
@@ -808,129 +805,10 @@ def animate_dynamic_graph_windows(
         blit=False,
         repeat=True,
     )
-    animation.save(output_path, writer=PillowWriter(fps=fps), dpi=dpi)
+    plt.show()
+
     plt.close(fig)
     return output_path
-
-
-def draw_connection_activity_heatmap(
-    windows: Iterable[nx.Graph],
-    output_path: str | Path = "connection_activity_heatmap.png",
-    start_window: int | None = None,
-    end_window: int | None = None,
-) -> Path:
-    """Draw a heatmap of every edge in an inclusive window range."""
-    windows = select_window_range(windows, start_window, end_window)
-
-    output_path = Path(output_path)
-    first_window = windows[0].graph["window"]
-    last_window = windows[-1].graph["window"]
-    edge_order = _ordered_union_edges(windows)
-    edge_index = {edge: index for index, edge in enumerate(edge_order)}
-    activity = np.zeros((len(edge_order), len(windows)), dtype=np.uint8)
-    link_type_codes = {
-        "access": 1,
-        "router_to_switch": 2,
-        "router_backbone": 3,
-        "normal_traffic": 4,
-    }
-
-    for column, graph in enumerate(windows):
-        for source, target, attributes in graph.edges(data=True):
-            edge = tuple(sorted((source, target)))
-            activity[edge_index[edge], column] = link_type_codes.get(
-                attributes.get("link_type"), 5
-            )
-
-    fig_height = max(8, min(28, len(edge_order) / 180))
-    fig, ax = plt.subplots(figsize=(18, fig_height), facecolor="white")
-    cmap = ListedColormap(
-        ["#FFFFFF", "#D1D5DB", "#6B7280", "#111827", "#0EA5E9", "#DC2626"]
-    )
-    image = ax.imshow(
-        activity, aspect="auto", interpolation="nearest", cmap=cmap, vmin=0, vmax=5
-    )
-
-    _shade_phase_spans(ax, len(edge_order), first_window, last_window)
-    ax.set_title(
-        f"Connection Activity Across Windows {first_window}-{last_window}",
-        fontsize=16,
-        fontweight="bold",
-    )
-    ax.set_xlabel("Time window")
-    ax.set_ylabel(f"Unique edges observed ({len(edge_order):,})")
-    tick_positions = _window_tick_positions(windows)
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels(
-        [str(windows[index].graph["window"]) for index in tick_positions]
-    )
-    _label_edge_axis(ax, edge_order)
-
-    colorbar = fig.colorbar(image, ax=ax, fraction=0.025, pad=0.01, ticks=range(6))
-    colorbar.ax.set_yticklabels(
-        ["absent", "access", "router→switch", "backbone", "normal traffic", "attack"]
-    )
-    ax.legend(
-        handles=_phase_legend_handles(),
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.08),
-        ncol=4,
-    )
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=220)
-    plt.close(fig)
-    return output_path
-
-
-def draw_window_connection_matrix(
-    graph: nx.Graph,
-    output_path: str | Path = "window_connection_matrix.png",
-) -> Path:
-    """Render one snapshot as a 200-device adjacency matrix to make dense edge changes clear."""
-    output_path = Path(output_path)
-    reference_graph = create_network()
-    node_order = _ordered_nodes_for_matrix(reference_graph)
-    node_index = {node: index for index, node in enumerate(node_order)}
-    matrix = np.zeros((len(node_order), len(node_order)), dtype=np.uint8)
-    link_type_codes = {
-        "access": 1,
-        "router_to_switch": 2,
-        "router_backbone": 3,
-        "normal_traffic": 4,
-    }
-
-    for source, target, attributes in graph.edges(data=True):
-        if source not in node_index or target not in node_index:
-            continue
-        source_index = node_index[source]
-        target_index = node_index[target]
-        code = link_type_codes.get(attributes.get("link_type"), 5)
-        matrix[source_index, target_index] = code
-        matrix[target_index, source_index] = code
-
-    fig, ax = plt.subplots(figsize=(14, 12), facecolor="white")
-    cmap = ListedColormap(
-        ["#FFFFFF", "#D1D5DB", "#6B7280", "#111827", "#0EA5E9", "#DC2626"]
-    )
-    image = ax.imshow(matrix, interpolation="nearest", cmap=cmap, vmin=0, vmax=5)
-    _draw_category_grid(ax, reference_graph, node_order)
-    ax.set_title(
-        "All Node-to-Node Connections — "
-        f"Window {graph.graph.get('window', 0):03d} ({graph.graph.get('phase', 'static')})",
-        fontsize=16,
-        fontweight="bold",
-    )
-    ax.set_xlabel("Target node ordered by device category")
-    ax.set_ylabel("Source node ordered by device category")
-    colorbar = fig.colorbar(image, ax=ax, fraction=0.035, pad=0.02, ticks=range(6))
-    colorbar.ax.set_yticklabels(
-        ["absent", "access", "router→switch", "backbone", "normal traffic", "attack"]
-    )
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=220)
-    plt.close(fig)
-    return output_path
-
 
 def _node_size_for_category(category: str) -> int:
     """Map device category to a readable node size for dense visualizations."""
@@ -1025,112 +903,6 @@ def _animation_legend_handles() -> list[plt.Line2D | Patch]:
     ]
     return node_handles + edge_handles
 
-
-def _phase_legend_handles() -> list[Patch]:
-    """Return legend patches for the four timing phases."""
-    return [
-        Patch(facecolor=color, edgecolor="white", label=phase.replace("_", " ").title())
-        for phase, color in PHASE_COLORS.items()
-    ]
-
-
-def _ordered_union_edges(windows: list[nx.Graph]) -> list[tuple[str, str]]:
-    """Collect all observed edges sorted by endpoint category and name."""
-    reference_graph = create_network()
-    categories = nx.get_node_attributes(reference_graph, "category")
-    edges = {tuple(sorted((source, target))) for graph in windows for source, target in graph.edges}
-    return sorted(
-        edges,
-        key=lambda edge: (
-            categories.get(edge[0], "zzz"),
-            categories.get(edge[1], "zzz"),
-            edge[0],
-            edge[1],
-        ),
-    )
-
-
-def _window_tick_positions(windows: list[nx.Graph]) -> list[int]:
-    """Return readable x-axis tick positions for a selected window range."""
-    if len(windows) <= 12:
-        return list(range(len(windows)))
-    return np.linspace(0, len(windows) - 1, 8, dtype=int).tolist()
-
-
-def _label_edge_axis(ax: plt.Axes, edge_order: list[tuple[str, str]]) -> None:
-    """Label a sampled set of heatmap rows so the plot remains readable."""
-    if len(edge_order) <= 30:
-        ticks = list(range(len(edge_order)))
-    else:
-        ticks = np.linspace(0, len(edge_order) - 1, 12, dtype=int).tolist()
-    ax.set_yticks(ticks)
-    ax.set_yticklabels(
-        [f"{edge_order[index][0]} — {edge_order[index][1]}" for index in ticks],
-        fontsize=7,
-    )
-
-
-def _shade_phase_spans(
-    ax: plt.Axes, edge_count: int, first_window: int, last_window: int
-) -> None:
-    """Overlay translucent phase bands on a ranged edge activity heatmap."""
-    for phase in TIMING_PHASES:
-        overlap_start = max(phase.start_window, first_window)
-        overlap_end = min(phase.end_window, last_window)
-        if overlap_start > overlap_end:
-            continue
-        ax.axvspan(
-            overlap_start - first_window - 0.5,
-            overlap_end - first_window + 0.5,
-            color=PHASE_COLORS[phase.name],
-            alpha=0.16,
-            linewidth=0,
-        )
-        ax.text(
-            ((overlap_start + overlap_end) / 2) - first_window,
-            -max(8, edge_count * 0.012),
-            phase.name.replace("_", " ").title(),
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            color="#334155",
-        )
-
-
-def _ordered_nodes_for_matrix(reference_graph: nx.Graph) -> list[str]:
-    """Order nodes by category and numeric name to reveal block connection patterns."""
-    category_rank = {category: rank for rank, category in enumerate(DEVICE_COUNTS)}
-    return sorted(
-        reference_graph.nodes,
-        key=lambda node: (category_rank[reference_graph.nodes[node]["category"]], node),
-    )
-
-
-def _draw_category_grid(ax: plt.Axes, reference_graph: nx.Graph, node_order: list[str]) -> None:
-    """Draw category block boundaries and labels on an adjacency matrix."""
-    categories = [reference_graph.nodes[node]["category"] for node in node_order]
-    boundaries = [0]
-    labels = []
-    for category in DEVICE_COUNTS:
-        count = categories.count(category)
-        if count == 0:
-            continue
-        start = boundaries[-1]
-        boundaries.append(start + count)
-        labels.append((start + count / 2 - 0.5, CATEGORY_DISPLAY_NAMES[category]))
-
-    for boundary in boundaries:
-        ax.axhline(boundary - 0.5, color="#475569", linewidth=0.55, alpha=0.7)
-        ax.axvline(boundary - 0.5, color="#475569", linewidth=0.55, alpha=0.7)
-
-    tick_positions = [position for position, _ in labels]
-    tick_labels = [label for _, label in labels]
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels(tick_labels, rotation=35, ha="right", fontsize=8)
-    ax.set_yticks(tick_positions)
-    ax.set_yticklabels(tick_labels, fontsize=8)
-
-
 def print_summary(graph: nx.Graph) -> None:
     """Print a concise summary for command-line use."""
     category_counts = Counter(nx.get_node_attributes(graph, "category").values())
@@ -1188,28 +960,9 @@ def parse_arguments() -> argparse.Namespace:
         help="Last one-indexed time window to visualize, inclusive (default: 500).",
     )
     parser.add_argument(
-        "--matrix-window",
-        type=int,
-        default=None,
-        help=(
-            "Single one-indexed window to use for the adjacency matrix. "
-            "Defaults to --start-window."
-        ),
-    )
-    parser.add_argument(
         "--snapshot-output",
         default="network_topology.png",
         help="PNG output path for the first selected window snapshot.",
-    )
-    parser.add_argument(
-        "--heatmap-output",
-        default="connection_activity_heatmap.png",
-        help="PNG output path for the selected-range connection heatmap.",
-    )
-    parser.add_argument(
-        "--matrix-output",
-        default="window_connection_matrix.png",
-        help="PNG output path for the selected matrix window.",
     )
     parser.add_argument(
         "--animation-output",
@@ -1236,23 +989,9 @@ if __name__ == "__main__":
     draw_network(selected_windows[0], args.snapshot_output)
     print(f"Saved selected-range snapshot visualization to {args.snapshot_output}")
 
-    draw_connection_activity_heatmap(
-        dynamic_windows,
-        args.heatmap_output,
-        start_window=args.start_window,
-        end_window=args.end_window,
-    )
-    print(f"Saved selected-range connection activity heatmap to {args.heatmap_output}")
-
-    matrix_window = args.matrix_window or args.start_window
-    matrix_snapshot = select_window_range(dynamic_windows, matrix_window, matrix_window)[0]
-    draw_window_connection_matrix(matrix_snapshot, args.matrix_output)
-    print(f"Saved window {matrix_window} connection matrix to {args.matrix_output}")
-
     animate_dynamic_graph_windows(
         dynamic_windows,
         args.animation_output,
         start_window=args.start_window,
         end_window=args.end_window,
     )
-    print(f"Saved selected-range FuncAnimation render to {args.animation_output}")
