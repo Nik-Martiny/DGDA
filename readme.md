@@ -64,3 +64,42 @@ Running the script prints a summary and saves a visualization to
 ```bash
 python main.py
 ```
+
+## Dynamic timing-window simulation
+
+`main.py` now builds the dynamic graph as 500 one-indexed discrete time windows.
+Each window is a NetworkX graph snapshot with stable router/switch infrastructure,
+normal endpoint churn, and transient normal communication edges that appear and
+disappear between windows. The deterministic seed keeps the dynamic graph
+reproducible while still allowing active endpoints and communication links to vary
+across time.
+
+The timing layout is:
+
+* **Windows 1-150: baseline phase** — pure normal traffic only so downstream
+  algorithms can learn normal graph behavior.
+* **Windows 151-250: pre-attack phase** — normal traffic only for validating false
+  alarms and calibrating CUSUM/Page-Hinkley thresholds.
+* **Windows 251-350: attack phase** — normal traffic plus a reserved attack
+  injection hook. No concrete attacks are injected yet, but each snapshot is
+  marked with attack-phase ground-truth metadata so future attack mutators can add
+  malicious nodes/edges and detectors can be evaluated against the expected alarm
+  interval.
+* **Windows 351-500: recovery phase** — normal traffic returns, enabling detector
+  signal recovery checks and false-positive measurement.
+
+Programmatic use:
+
+```python
+from main import create_dynamic_graph_windows
+
+windows = create_dynamic_graph_windows()
+attack_window = windows[250]  # Window 251, because the Python list is zero-indexed.
+print(attack_window.graph["phase"])
+print(attack_window.graph["ground_truth_label"])
+```
+
+Future attack implementations can pass an `attack_injector` callback to
+`create_dynamic_graph_windows()`. The callback is invoked only for windows 251-350,
+which prevents attack traffic from leaking into the baseline, pre-attack, or
+recovery phases.
