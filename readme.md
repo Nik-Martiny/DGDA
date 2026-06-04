@@ -64,3 +64,111 @@ Running the script prints a summary and saves a visualization to
 ```bash
 python main.py
 ```
+
+## Dynamic timing-window simulation
+
+`main.py` now builds the dynamic graph as 500 one-indexed discrete time windows.
+Each window is a NetworkX graph snapshot with stable router/switch infrastructure,
+normal endpoint churn, and transient normal communication edges that appear and
+disappear between windows. The deterministic seed keeps the dynamic graph
+reproducible while still allowing active endpoints and communication links to vary
+across time.
+
+The timing layout is:
+
+* **Windows 1-150: baseline phase** — pure normal traffic only so downstream
+  algorithms can learn normal graph behavior.
+* **Windows 151-250: pre-attack phase** — normal traffic only for validating false
+  alarms and calibrating CUSUM/Page-Hinkley thresholds.
+* **Windows 251-350: attack phase** — normal traffic plus a reserved attack
+  injection hook. No concrete attacks are injected yet, but each snapshot is
+  marked with attack-phase ground-truth metadata so future attack mutators can add
+  malicious nodes/edges and detectors can be evaluated against the expected alarm
+  interval.
+* **Windows 351-500: recovery phase** — normal traffic returns, enabling detector
+  signal recovery checks and false-positive measurement.
+
+Programmatic use:
+
+```python
+from main import create_dynamic_graph_windows
+
+windows = create_dynamic_graph_windows()
+attack_window = windows[250]  # Window 251, because the Python list is zero-indexed.
+print(attack_window.graph["phase"])
+print(attack_window.graph["ground_truth_label"])
+```
+
+Future attack implementations can pass an `attack_injector` callback to
+`create_dynamic_graph_windows()`. The callback is invoked only for windows 251-350,
+which prevents attack traffic from leaking into the baseline, pre-attack, or
+recovery phases.
+
+## Dynamic graph visualizations
+
+The simulation now includes three complementary visualization helpers for seeing
+how the graph changes across the discrete timing windows:
+
+* `animate_dynamic_graph_windows()` renders a Matplotlib `FuncAnimation` GIF that
+  advances sequentially through the generated windows. It uses a stable layout so
+  devices stay in the same place across frames, phase-colored backgrounds, a
+  timeline progress bar, category colors, and separate edge styling for backbone,
+  router/switch, access, and transient normal-traffic links.
+* `draw_connection_activity_heatmap()` creates a whole-simulation edge activity
+  heatmap. Columns are windows 1-500 and rows are every unique edge observed in
+  the run, making it easy to see when individual connections appear, disappear,
+  or persist across phases.
+* `draw_window_connection_matrix()` creates an adjacency-matrix view for a single
+  window. Nodes are ordered by device category so dense all-to-all connection
+  patterns are easier to inspect than in a crowded node-link drawing.
+
+Running the script writes these visual artifacts for all 500 windows by default:
+
+```bash
+python main.py
+```
+
+You can choose an inclusive window range from the command line when you only want
+to inspect part of the timeline. For example, this renders only the attack-phase
+windows 251-350 and uses window 300 for the adjacency matrix:
+
+```bash
+python main.py --start-window 251 --end-window 350 --matrix-window 300
+```
+
+Outputs:
+
+* `network_topology.png` — node-link snapshot for the first selected window.
+* `connection_activity_heatmap.png` — observed edges across the selected window range.
+* `window_connection_matrix.png` — all node-to-node links in `--matrix-window`
+  (or `--start-window` when omitted).
+* `dynamic_graph_windows.gif` — the selected-range sequential FuncAnimation render.
+
+Programmatic use:
+
+```python
+from main import (
+    animate_dynamic_graph_windows,
+    create_dynamic_graph_windows,
+    draw_connection_activity_heatmap,
+    draw_window_connection_matrix,
+    select_window_range,
+)
+
+windows = create_dynamic_graph_windows()
+attack_windows = select_window_range(windows, 251, 350)
+
+animate_dynamic_graph_windows(
+    windows,
+    "attack_windows.gif",
+    start_window=251,
+    end_window=350,
+)
+draw_connection_activity_heatmap(
+    windows,
+    "attack_connection_activity.png",
+    start_window=251,
+    end_window=350,
+)
+draw_window_connection_matrix(attack_windows[49], "window_300_matrix.png")
+```
