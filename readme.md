@@ -122,18 +122,27 @@ how the graph changes across the discrete timing windows:
   window. Nodes are ordered by device category so dense all-to-all connection
   patterns are easier to inspect than in a crowded node-link drawing.
 
-Running the script writes these visual artifacts:
+Running the script writes these visual artifacts for all 500 windows by default:
 
 ```bash
 python main.py
 ```
 
+You can choose an inclusive window range from the command line when you only want
+to inspect part of the timeline. For example, this renders only the attack-phase
+windows 251-350 and uses window 300 for the adjacency matrix:
+
+```bash
+python main.py --start-window 251 --end-window 350 --matrix-window 300
+```
+
 Outputs:
 
-* `network_topology.png` — node-link snapshot for the first baseline window.
-* `connection_activity_heatmap.png` — all observed edges across all 500 windows.
-* `window_connection_matrix.png` — all node-to-node links in window 251.
-* `dynamic_graph_windows.gif` — the sequential FuncAnimation render.
+* `network_topology.png` — node-link snapshot for the first selected window.
+* `connection_activity_heatmap.png` — observed edges across the selected window range.
+* `window_connection_matrix.png` — all node-to-node links in `--matrix-window`
+  (or `--start-window` when omitted).
+* `dynamic_graph_windows.gif` — the selected-range sequential FuncAnimation render.
 
 Programmatic use:
 
@@ -143,10 +152,23 @@ from main import (
     create_dynamic_graph_windows,
     draw_connection_activity_heatmap,
     draw_window_connection_matrix,
+    select_window_range,
 )
 
 windows = create_dynamic_graph_windows()
-animate_dynamic_graph_windows(windows, "dynamic_graph_windows.gif")
-draw_connection_activity_heatmap(windows, "connection_activity_heatmap.png")
-draw_window_connection_matrix(windows[250], "window_251_matrix.png")
+attack_windows = select_window_range(windows, 251, 350)
+
+animate_dynamic_graph_windows(
+    windows,
+    "attack_windows.gif",
+    start_window=251,
+    end_window=350,
+)
+draw_connection_activity_heatmap(
+    windows,
+    "attack_connection_activity.png",
+    start_window=251,
+    end_window=350,
+)
+draw_window_connection_matrix(attack_windows[49], "window_300_matrix.png")
 ```

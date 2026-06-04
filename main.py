@@ -15,6 +15,7 @@ while all other phases remain pure normal traffic.
 
 from __future__ import annotations
 
+import argparse
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -602,6 +603,44 @@ def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.pn
     plt.close()
 
 
+def select_window_range(
+    windows: Iterable[nx.Graph],
+    start_window: int | None = None,
+    end_window: int | None = None,
+) -> list[nx.Graph]:
+    """Return snapshots whose one-indexed window number is in an inclusive range."""
+    windows = list(windows)
+    if not windows:
+        raise ValueError("At least one graph window is required to select a range.")
+
+    available_windows = [graph.graph["window"] for graph in windows]
+    first_available = min(available_windows)
+    last_available = max(available_windows)
+    start_window = first_available if start_window is None else start_window
+    end_window = last_available if end_window is None else end_window
+
+    if start_window < first_available or end_window > last_available:
+        raise ValueError(
+            f"Requested windows {start_window}-{end_window}, but available windows "
+            f"are {first_available}-{last_available}."
+        )
+    if start_window > end_window:
+        raise ValueError(
+            f"Start window {start_window} must be less than or equal to "
+            f"end window {end_window}."
+        )
+
+    selected_windows = [
+        graph
+        for graph in windows
+        if start_window <= graph.graph["window"] <= end_window
+    ]
+    if not selected_windows:
+        raise ValueError(f"No windows found in requested range {start_window}-{end_window}.")
+
+    return selected_windows
+
+
 def create_stable_layout(graph: nx.Graph) -> dict[str, tuple[float, float]]:
     """Return stable, visually grouped positions for every device in the network."""
     positions: dict[str, tuple[float, float]] = {}
@@ -664,11 +703,11 @@ def animate_dynamic_graph_windows(
     interval_ms: int = ANIMATION_INTERVAL_MS,
     fps: int = ANIMATION_FPS,
     dpi: int = 120,
+    start_window: int | None = None,
+    end_window: int | None = None,
 ) -> Path:
-    """Render every dynamic graph window sequentially as a FuncAnimation GIF."""
-    windows = list(windows)
-    if not windows:
-        raise ValueError("At least one graph window is required to build an animation.")
+    """Render an inclusive range of dynamic graph windows as a FuncAnimation GIF."""
+    windows = select_window_range(windows, start_window, end_window)
 
     output_path = Path(output_path)
     reference_graph = create_network()
@@ -676,6 +715,9 @@ def animate_dynamic_graph_windows(
     all_nodes = list(reference_graph.nodes)
     node_categories = nx.get_node_attributes(reference_graph, "category")
     edge_layers = tuple(LINK_TYPE_COLORS)
+
+    first_window = windows[0].graph["window"]
+    last_window = windows[-1].graph["window"]
 
     fig, ax = plt.subplots(figsize=(16, 12), facecolor="#F8FAFC")
     plt.subplots_adjust(bottom=0.13)
@@ -735,10 +777,11 @@ def animate_dynamic_graph_windows(
             ax=ax,
         )
         _draw_infrastructure_labels(graph, positions, ax)
-        _draw_timeline_bar(ax, graph.graph["window"])
+        _draw_timeline_bar(ax, graph.graph["window"], first_window, last_window)
         ax.set_title(
             "Dynamic Communication Network — "
             f"Window {graph.graph['window']:03d}/500 ({phase.replace('_', ' ').title()})\n"
+            f"Showing windows {first_window}-{last_window} • "
             f"{graph.number_of_nodes()} active nodes • {graph.number_of_edges()} active links",
             fontsize=18,
             fontweight="bold",
@@ -773,13 +816,15 @@ def animate_dynamic_graph_windows(
 def draw_connection_activity_heatmap(
     windows: Iterable[nx.Graph],
     output_path: str | Path = "connection_activity_heatmap.png",
+    start_window: int | None = None,
+    end_window: int | None = None,
 ) -> Path:
-    """Draw a window-by-window heatmap of every edge that appears in the simulation."""
-    windows = list(windows)
-    if not windows:
-        raise ValueError("At least one graph window is required to draw edge activity.")
+    """Draw a heatmap of every edge in an inclusive window range."""
+    windows = select_window_range(windows, start_window, end_window)
 
     output_path = Path(output_path)
+    first_window = windows[0].graph["window"]
+    last_window = windows[-1].graph["window"]
     edge_order = _ordered_union_edges(windows)
     edge_index = {edge: index for index, edge in enumerate(edge_order)}
     activity = np.zeros((len(edge_order), len(windows)), dtype=np.uint8)
@@ -806,19 +851,31 @@ def draw_connection_activity_heatmap(
         activity, aspect="auto", interpolation="nearest", cmap=cmap, vmin=0, vmax=5
     )
 
-    _shade_phase_spans(ax, len(edge_order))
-    ax.set_title("Connection Activity Across All 500 Dynamic Windows", fontsize=16, fontweight="bold")
+    _shade_phase_spans(ax, len(edge_order), first_window, last_window)
+    ax.set_title(
+        f"Connection Activity Across Windows {first_window}-{last_window}",
+        fontsize=16,
+        fontweight="bold",
+    )
     ax.set_xlabel("Time window")
     ax.set_ylabel(f"Unique edges observed ({len(edge_order):,})")
-    ax.set_xticks([0, 149, 249, 349, 499])
-    ax.set_xticklabels(["1", "150", "250", "350", "500"])
+    tick_positions = _window_tick_positions(windows)
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(
+        [str(windows[index].graph["window"]) for index in tick_positions]
+    )
     _label_edge_axis(ax, edge_order)
 
     colorbar = fig.colorbar(image, ax=ax, fraction=0.025, pad=0.01, ticks=range(6))
     colorbar.ax.set_yticklabels(
         ["absent", "access", "router→switch", "backbone", "normal traffic", "attack"]
     )
-    ax.legend(handles=_phase_legend_handles(), loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=4)
+    ax.legend(
+        handles=_phase_legend_handles(),
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.08),
+        ncol=4,
+    )
     fig.tight_layout()
     fig.savefig(output_path, dpi=220)
     plt.close(fig)
@@ -852,7 +909,9 @@ def draw_window_connection_matrix(
         matrix[target_index, source_index] = code
 
     fig, ax = plt.subplots(figsize=(14, 12), facecolor="white")
-    cmap = ListedColormap(["#FFFFFF", "#D1D5DB", "#6B7280", "#111827", "#0EA5E9", "#DC2626"])
+    cmap = ListedColormap(
+        ["#FFFFFF", "#D1D5DB", "#6B7280", "#111827", "#0EA5E9", "#DC2626"]
+    )
     image = ax.imshow(matrix, interpolation="nearest", cmap=cmap, vmin=0, vmax=5)
     _draw_category_grid(ax, reference_graph, node_order)
     ax.set_title(
@@ -898,12 +957,22 @@ def _draw_infrastructure_labels(
     )
 
 
-def _draw_timeline_bar(ax: plt.Axes, current_window: int) -> None:
-    """Add a phase-colored progress bar under the animated network."""
+def _draw_timeline_bar(
+    ax: plt.Axes,
+    current_window: int,
+    selected_start_window: int,
+    selected_end_window: int,
+) -> None:
+    """Add a phase-colored progress bar for the selected animation range."""
     inset = ax.inset_axes([0.05, -0.08, 0.9, 0.045])
+    selected_span = selected_end_window - selected_start_window + 1
     for phase in TIMING_PHASES:
-        start = (phase.start_window - 1) / TOTAL_TIME_WINDOWS
-        width = (phase.end_window - phase.start_window + 1) / TOTAL_TIME_WINDOWS
+        overlap_start = max(phase.start_window, selected_start_window)
+        overlap_end = min(phase.end_window, selected_end_window)
+        if overlap_start > overlap_end:
+            continue
+        start = (overlap_start - selected_start_window) / selected_span
+        width = (overlap_end - overlap_start + 1) / selected_span
         inset.barh(
             0,
             width,
@@ -921,7 +990,9 @@ def _draw_timeline_bar(ax: plt.Axes, current_window: int) -> None:
             fontsize=8,
         )
     inset.axvline(
-        (current_window - 1) / TOTAL_TIME_WINDOWS, color="#0F172A", linewidth=2.2
+        (current_window - selected_start_window) / selected_span,
+        color="#0F172A",
+        linewidth=2.2,
     )
     inset.set_xlim(0, 1)
     inset.set_ylim(-0.5, 0.5)
@@ -979,6 +1050,13 @@ def _ordered_union_edges(windows: list[nx.Graph]) -> list[tuple[str, str]]:
     )
 
 
+def _window_tick_positions(windows: list[nx.Graph]) -> list[int]:
+    """Return readable x-axis tick positions for a selected window range."""
+    if len(windows) <= 12:
+        return list(range(len(windows)))
+    return np.linspace(0, len(windows) - 1, 8, dtype=int).tolist()
+
+
 def _label_edge_axis(ax: plt.Axes, edge_order: list[tuple[str, str]]) -> None:
     """Label a sampled set of heatmap rows so the plot remains readable."""
     if len(edge_order) <= 30:
@@ -992,18 +1070,24 @@ def _label_edge_axis(ax: plt.Axes, edge_order: list[tuple[str, str]]) -> None:
     )
 
 
-def _shade_phase_spans(ax: plt.Axes, edge_count: int) -> None:
-    """Overlay translucent phase bands on the edge activity heatmap."""
+def _shade_phase_spans(
+    ax: plt.Axes, edge_count: int, first_window: int, last_window: int
+) -> None:
+    """Overlay translucent phase bands on a ranged edge activity heatmap."""
     for phase in TIMING_PHASES:
+        overlap_start = max(phase.start_window, first_window)
+        overlap_end = min(phase.end_window, last_window)
+        if overlap_start > overlap_end:
+            continue
         ax.axvspan(
-            phase.start_window - 1.5,
-            phase.end_window - 0.5,
+            overlap_start - first_window - 0.5,
+            overlap_end - first_window + 0.5,
             color=PHASE_COLORS[phase.name],
             alpha=0.16,
             linewidth=0,
         )
         ax.text(
-            (phase.start_window + phase.end_window) / 2 - 1,
+            ((overlap_start + overlap_end) / 2) - first_window,
             -max(8, edge_count * 0.012),
             phase.name.replace("_", " ").title(),
             ha="center",
@@ -1086,21 +1170,89 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     print("Attack injection hook enabled only for windows 251-350.")
 
 
+def parse_arguments() -> argparse.Namespace:
+    """Parse command-line options for choosing visualization window ranges."""
+    parser = argparse.ArgumentParser(
+        description="Build the dynamic graph and render selected visualization windows."
+    )
+    parser.add_argument(
+        "--start-window",
+        type=int,
+        default=1,
+        help="First one-indexed time window to visualize, inclusive (default: 1).",
+    )
+    parser.add_argument(
+        "--end-window",
+        type=int,
+        default=TOTAL_TIME_WINDOWS,
+        help="Last one-indexed time window to visualize, inclusive (default: 500).",
+    )
+    parser.add_argument(
+        "--matrix-window",
+        type=int,
+        default=None,
+        help=(
+            "Single one-indexed window to use for the adjacency matrix. "
+            "Defaults to --start-window."
+        ),
+    )
+    parser.add_argument(
+        "--snapshot-output",
+        default="network_topology.png",
+        help="PNG output path for the first selected window snapshot.",
+    )
+    parser.add_argument(
+        "--heatmap-output",
+        default="connection_activity_heatmap.png",
+        help="PNG output path for the selected-range connection heatmap.",
+    )
+    parser.add_argument(
+        "--matrix-output",
+        default="window_connection_matrix.png",
+        help="PNG output path for the selected matrix window.",
+    )
+    parser.add_argument(
+        "--animation-output",
+        default="dynamic_graph_windows.gif",
+        help="GIF output path for the selected-range FuncAnimation render.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_arguments()
+
     network = create_network()
     print_summary(network)
 
     dynamic_windows = create_dynamic_graph_windows()
     print_dynamic_summary(dynamic_windows)
 
-    draw_network(dynamic_windows[0])
-    print("Saved dynamic baseline visualization to network_topology.png")
+    selected_windows = select_window_range(
+        dynamic_windows, args.start_window, args.end_window
+    )
+    print(f"Visualizing windows {args.start_window}-{args.end_window}.")
 
-    draw_connection_activity_heatmap(dynamic_windows)
-    print("Saved all-window connection activity heatmap to connection_activity_heatmap.png")
+    draw_network(selected_windows[0], args.snapshot_output)
+    print(f"Saved selected-range snapshot visualization to {args.snapshot_output}")
 
-    draw_window_connection_matrix(dynamic_windows[250])
-    print("Saved attack-phase connection matrix to window_connection_matrix.png")
+    draw_connection_activity_heatmap(
+        dynamic_windows,
+        args.heatmap_output,
+        start_window=args.start_window,
+        end_window=args.end_window,
+    )
+    print(f"Saved selected-range connection activity heatmap to {args.heatmap_output}")
 
-    animate_dynamic_graph_windows(dynamic_windows)
-    print("Saved FuncAnimation render to dynamic_graph_windows.gif")
+    matrix_window = args.matrix_window or args.start_window
+    matrix_snapshot = select_window_range(dynamic_windows, matrix_window, matrix_window)[0]
+    draw_window_connection_matrix(matrix_snapshot, args.matrix_output)
+    print(f"Saved window {matrix_window} connection matrix to {args.matrix_output}")
+
+    animate_dynamic_graph_windows(
+        dynamic_windows,
+        args.animation_output,
+        start_window=args.start_window,
+        end_window=args.end_window,
+    )
+    print(f"Saved selected-range FuncAnimation render to {args.animation_output}")
