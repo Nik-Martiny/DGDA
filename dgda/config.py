@@ -99,8 +99,8 @@ ENDPOINT_PREFIXES = {
 
 ENDPOINT_UP_PROBABILITIES = {
     "client_workstation": 0.92,
-    "internal_server": 0.99,
-    "web_edge_server": 0.99,
+    "internal_server": 1,
+    "web_edge_server": 1,
     "iot_peripheral": 0.84,
 }
 
@@ -108,9 +108,27 @@ NORMAL_TRAFFIC_RULES = (
     ("client_workstation", "internal_server", 70, 115, "client_to_internal"),
     ("client_workstation", "web_edge_server", 55, 95, "client_to_web_edge"),
     ("iot_peripheral", "internal_server", 20, 45, "iot_to_internal"),
+    ("iot_peripheral", "client_workstation", 25, 55, "iot_to_client"),
     ("internal_server", "web_edge_server", 15, 35, "server_to_edge"),
     ("client_workstation", "client_workstation", 8, 18, "client_peer"),
 )
+
+# Edge weights represent how many times nodes communicate during one dynamic
+# time window.  Transient endpoint edges receive sampled communication counts;
+# physical switch/router edges accumulate the counts routed through them.
+# Ranges differ by traffic profile so lightweight IoT chatter, routine client
+# traffic, and heavier server/web activity are distinct without modeling
+# packet-level internals.
+EDGE_WEIGHT_UNIT = "communications_per_window"
+TRAFFIC_WEIGHT_RANGES = {
+    "iot_to_internal": (1, 5),
+    "iot_to_client": (1, 4),
+    "client_peer": (2, 8),
+    "client_to_internal": (6, 18),
+    "client_to_web_edge": (12, 35),
+    "server_to_edge": (25, 70),
+}
+
 
 ROUTER_RING_EDGES = (
     ("router_A", "router_B"),

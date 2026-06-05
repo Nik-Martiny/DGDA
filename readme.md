@@ -126,6 +126,36 @@ Future attack implementations can pass an `attack_injector` callback to
 which prevents attack traffic from leaking into the baseline, pre-attack, or
 recovery phases.
 
+## Weighted communication edges
+
+Dynamic windows use `weight` as a simple count of how many times two endpoint
+nodes communicate during one time window.  The simulation does not model
+packet-level internals; each transient `normal_traffic` edge gets one integer
+weight sampled from the traffic profile for that device pairing.
+
+Traffic profiles are intentionally different by communicating device type:
+IoT telemetry is low volume, IoT-to-client chatter is also light, routine
+client-to-internal traffic is moderate, web/edge sessions are burstier, and
+server-to-edge synchronization is the heaviest normal communication pattern.
+IoT/peripheral devices can communicate with both internal servers and client
+workstations, making the client/IoT network more realistic than a server-only
+IoT model.
+
+Those same endpoint communication weights are also routed through the physical
+network.  For each transient conversation, the simulation finds the switch/router
+path between the source and destination and adds the conversation weight to every
+physical access, router-to-switch, and backbone edge on that path.  This means a
+switch-to-router link naturally receives the aggregate weight of many endpoint
+conversations, while backbone router links show the traffic that crosses network
+segments.
+
+The topology snapshot visualization uses a stable router/switch layout, colors
+edges by link type, scales all weighted edges by their current load, and labels
+edges carrying non-zero per-window weight.  This makes the saved
+`network_topology.png` view a true snapshot of who is talking and where that
+traffic flows through the network rather than just a static physical wiring
+diagram.
+
 ## Dynamic graph visualizations
 
 The simulation now includes three complementary visualization helpers for seeing

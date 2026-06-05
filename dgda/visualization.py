@@ -20,7 +20,6 @@ from dgda.config import (
     LINK_TYPE_COLORS,
     LINK_TYPE_WIDTHS,
     PHASE_COLORS,
-    RNG_SEED,
     ROUTER_NAMES,
     SWITCH_NAMES,
 )
@@ -28,7 +27,9 @@ from dgda.phases import TIMING_PHASES
 from dgda.topology import create_network
 
 
-def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.png") -> Path:
+def draw_network(
+    graph: nx.Graph, output_path: str | Path = "network_topology.png"
+) -> Path:
     """Render one graph snapshot as a PNG image.
 
     This view is useful for a quick human check of the simulated topology.  It
@@ -36,7 +37,8 @@ def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.pn
     nodes, and labels only the infrastructure so the image remains readable.
     """
     output_path = Path(output_path)
-    positions = nx.spring_layout(graph, seed=RNG_SEED)
+    reference_graph = create_network() if "window" in graph.graph else graph
+    positions = create_stable_layout(reference_graph)
     node_colors = []
     node_sizes = []
 
@@ -45,8 +47,29 @@ def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.pn
         node_colors.append(CATEGORY_COLORS[category])
         node_sizes.append(node_size_for_category(category))
 
-    figure, axis = plt.subplots(figsize=(18, 14))
-    nx.draw_networkx_edges(graph, positions, alpha=0.28, width=0.8, ax=axis)
+    figure, axis = plt.subplots(figsize=(20, 16), facecolor="#F8FAFC")
+    axis.set_facecolor(PHASE_COLORS.get(graph.graph.get("phase"), "#FFFFFF"))
+
+    for link_type in LINK_TYPE_COLORS:
+        edges = edges_for_link_type(graph, link_type)
+        if not edges:
+            continue
+
+        width = [
+            edge_width_for_weight(graph, source, target, link_type)
+            for source, target in edges
+        ]
+
+        nx.draw_networkx_edges(
+            graph,
+            positions,
+            edgelist=edges,
+            edge_color=LINK_TYPE_COLORS[link_type],
+            width=width,
+            alpha=LINK_TYPE_ALPHAS[link_type],
+            ax=axis,
+        )
+
     nx.draw_networkx_nodes(
         graph,
         positions,
@@ -58,7 +81,8 @@ def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.pn
     )
 
     draw_infrastructure_labels(graph, positions, axis)
-    axis.legend(handles=category_legend_handles(), loc="upper right")
+    draw_edge_weight_labels(graph, positions, axis)
+    axis.legend(handles=animation_legend_handles(), loc="upper right")
     axis.set_title(network_title(graph))
     axis.axis("off")
     figure.tight_layout()
@@ -110,7 +134,9 @@ def select_window_range(
             selected_windows.append(graph)
 
     if not selected_windows:
-        raise ValueError(f"No windows found in requested range {start_window}-{end_window}.")
+        raise ValueError(
+            f"No windows found in requested range {start_window}-{end_window}."
+        )
 
     return selected_windows
 
@@ -261,7 +287,7 @@ def draw_window_connection_matrix(
     """
     output_path = Path(output_path)
     nodes = sorted(graph.nodes, key=lambda node: (graph.nodes[node]["category"], node))
-    matrix = nx.to_numpy_array(graph, nodelist=nodes)
+    matrix = nx.to_numpy_array(graph, nodelist=nodes, weight=None)
     color_map = ListedColormap(["#F8FAFC", "#0EA5E9"])
 
     figure, axis = plt.subplots(figsize=(12, 12))
@@ -323,12 +349,17 @@ def draw_animation_frame(
         if not edges:
             continue
 
+        width = [
+            edge_width_for_weight(graph, source, target, link_type)
+            for source, target in edges
+        ]
+
         nx.draw_networkx_edges(
             graph,
             positions,
             edgelist=edges,
             edge_color=LINK_TYPE_COLORS[link_type],
-            width=LINK_TYPE_WIDTHS[link_type],
+            width=width,
             alpha=LINK_TYPE_ALPHAS[link_type],
             ax=axis,
         )
@@ -353,9 +384,63 @@ def draw_animation_frame(
         framealpha=0.92,
         fontsize=9,
     )
-    axis.set_title(animation_title(graph, first_window, last_window), fontsize=18, fontweight="bold")
+    axis.set_title(
+        animation_title(graph, first_window, last_window),
+        fontsize=18,
+        fontweight="bold",
+    )
     axis.axis("off")
     axis.set_aspect("equal")
+
+
+def edge_width_for_weight(
+    graph: nx.Graph, source: str, target: str, link_type: str
+) -> float:
+    """Scale snapshot and animation edges by their current communication weight."""
+    base_width = LINK_TYPE_WIDTHS[link_type]
+    weight = graph.edges[source, target].get("weight", 0)
+
+    if weight <= 0:
+        return base_width
+
+    if link_type == "normal_traffic":
+        return min(3.2, 0.55 + weight / 25)
+
+    return min(base_width + 4.0, base_width + np.log1p(weight) / 2.5)
+
+
+def draw_edge_weight_labels(
+    graph: nx.Graph, positions: dict[str, tuple[float, float]], axis: plt.Axes
+) -> None:
+    """Draw labels for weighted communication edges in a snapshot."""
+    labels = edge_weight_labels(graph)
+    if not labels:
+        return
+
+    nx.draw_networkx_edge_labels(
+        graph,
+        positions,
+        edge_labels=labels,
+        font_size=6,
+        font_color="#0F172A",
+        rotate=False,
+        bbox={"boxstyle": "round,pad=0.12", "fc": "white", "ec": "none", "alpha": 0.76},
+        ax=axis,
+    )
+
+
+def edge_weight_labels(graph: nx.Graph) -> dict[tuple[str, str], str]:
+    """Return labels for every edge carrying non-zero routed traffic weight."""
+    labels = {}
+
+    for source, target, attributes in graph.edges(data=True):
+        weight = attributes.get("weight")
+        if weight is None or weight <= 0:
+            continue
+
+        labels[(source, target)] = str(int(weight))
+
+    return labels
 
 
 def attached_switch_for_node(graph: nx.Graph, node: str) -> str:
@@ -424,7 +509,9 @@ def draw_infrastructure_labels(
         label = label.replace("Switch ", "S")
         labels[node] = label
 
-    nx.draw_networkx_labels(graph, positions, labels=labels, font_size=8, font_weight="bold", ax=axis)
+    nx.draw_networkx_labels(
+        graph, positions, labels=labels, font_size=8, font_weight="bold", ax=axis
+    )
 
 
 def draw_timeline_bar(
@@ -446,8 +533,22 @@ def draw_timeline_bar(
 
         start = (overlap_start - selected_start_window) / selected_span
         width = (overlap_end - overlap_start + 1) / selected_span
-        inset.barh(0, width, left=start, height=1, color=PHASE_COLORS[phase.name], edgecolor="white")
-        inset.text(start + width / 2, 0, phase.name.replace("_", "\n"), ha="center", va="center", fontsize=8)
+        inset.barh(
+            0,
+            width,
+            left=start,
+            height=1,
+            color=PHASE_COLORS[phase.name],
+            edgecolor="white",
+        )
+        inset.text(
+            start + width / 2,
+            0,
+            phase.name.replace("_", "\n"),
+            ha="center",
+            va="center",
+            fontsize=8,
+        )
 
     marker_position = (current_window - selected_start_window) / selected_span
     inset.axvline(marker_position, color="#0F172A", linewidth=2.2)

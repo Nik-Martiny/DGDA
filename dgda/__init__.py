@@ -11,6 +11,7 @@ from dgda.config import (
     CATEGORY_COLORS,
     CATEGORY_DISPLAY_NAMES,
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_CATEGORIES,
     INFRASTRUCTURE_CATEGORIES,
     LINK_TYPE_ALPHAS,
@@ -24,6 +25,7 @@ from dgda.config import (
     SWITCH_NAMES,
     TOTAL_DEVICES,
     TOTAL_TIME_WINDOWS,
+    TRAFFIC_WEIGHT_RANGES,
 )
 from dgda.dynamics import create_dynamic_graph_windows, phase_for_window
 from dgda.phases import TIMING_PHASES, TimingPhase
@@ -43,6 +45,7 @@ __all__ = [
     "CATEGORY_COLORS",
     "CATEGORY_DISPLAY_NAMES",
     "DEVICE_COUNTS",
+    "EDGE_WEIGHT_UNIT",
     "ENDPOINT_CATEGORIES",
     "INFRASTRUCTURE_CATEGORIES",
     "LINK_TYPE_ALPHAS",
@@ -57,6 +60,7 @@ __all__ = [
     "TIMING_PHASES",
     "TOTAL_DEVICES",
     "TOTAL_TIME_WINDOWS",
+    "TRAFFIC_WEIGHT_RANGES",
     "TimingPhase",
     "animate_dynamic_graph_windows",
     "create_dynamic_graph_windows",

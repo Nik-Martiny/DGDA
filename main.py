@@ -11,6 +11,7 @@ from dgda import (  # noqa: F401
     CATEGORY_COLORS,
     CATEGORY_DISPLAY_NAMES,
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_CATEGORIES,
     INFRASTRUCTURE_CATEGORIES,
     LINK_TYPE_ALPHAS,
@@ -25,6 +26,7 @@ from dgda import (  # noqa: F401
     TIMING_PHASES,
     TOTAL_DEVICES,
     TOTAL_TIME_WINDOWS,
+    TRAFFIC_WEIGHT_RANGES,
     TimingPhase,
     animate_dynamic_graph_windows,
     create_dynamic_graph_windows,
@@ -37,7 +39,6 @@ from dgda import (  # noqa: F401
     select_window_range,
 )
 from dgda.cli import main
-
 
 if __name__ == "__main__":
     main()

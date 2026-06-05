@@ -4,14 +4,17 @@ from collections.abc import Callable
 
 import networkx as nx
 import numpy as np
+from networkx.linalg.laplacianmatrix import laplacian_matrix
 
 from dgda.config import (
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_UP_PROBABILITIES,
     INFRASTRUCTURE_CATEGORIES,
     NORMAL_TRAFFIC_RULES,
     RNG_SEED,
     TOTAL_TIME_WINDOWS,
+    TRAFFIC_WEIGHT_RANGES,
 )
 from dgda.phases import TIMING_PHASES, TimingPhase
 from dgda.topology import create_network
@@ -50,6 +53,12 @@ def create_dynamic_graph_windows(
 
         validate_window_snapshot(snapshot, phase)
         windows.append(snapshot)
+
+        #nodes = sorted(snapshot.nodes, key=lambda node: (snapshot.nodes[node]["category"], node))
+
+        #lap_mat = laplacian_matrix(snapshot, nodelist=nodes, weight="weight").toarray()
+
+        #print(lap_mat)
 
     return windows
 
@@ -105,11 +114,15 @@ def create_normal_window_snapshot(
         attack_injection_allowed=phase.attack_injection_allowed,
         ground_truth_attack_phase=phase.attack_injection_allowed,
         ground_truth_label="attack" if phase.attack_injection_allowed else "normal",
-        traffic_mode="normal_with_attack_slot"
-        if phase.attack_injection_allowed
-        else "normal_only",
+        traffic_mode=(
+            "normal_with_attack_slot"
+            if phase.attack_injection_allowed
+            else "normal_only"
+        ),
+        edge_weight_unit=EDGE_WEIGHT_UNIT,
     )
 
+    reset_physical_edge_weights(snapshot)
     add_normal_traffic_edges(snapshot, rng, window)
     return snapshot
 
@@ -176,6 +189,10 @@ def add_normal_traffic_edges(
             if graph.has_edge(source, target):
                 continue
 
+            weight = sample_traffic_weight(traffic_label, rng)
+            physical_path = shortest_physical_path(graph, source, target)
+            apply_traffic_weight_to_path(graph, physical_path, weight)
+
             graph.add_edge(
                 source,
                 target,
@@ -183,8 +200,48 @@ def add_normal_traffic_edges(
                 traffic_profile=traffic_label,
                 transient=True,
                 window=window,
+                weight=weight,
+                weight_unit=EDGE_WEIGHT_UNIT,
             )
             added_edges += 1
+
+
+def reset_physical_edge_weights(graph: nx.Graph) -> None:
+    """Reset stable physical links before routing one window's traffic through them."""
+    for _source, _target, attributes in graph.edges(data=True):
+        if attributes.get("link_type") == "normal_traffic":
+            continue
+
+        attributes["weight"] = 0
+        attributes["weight_unit"] = EDGE_WEIGHT_UNIT
+
+
+def shortest_physical_path(graph: nx.Graph, source: str, target: str) -> list[str]:
+    """Return the switch/router path a communication edge traverses."""
+    physical_view = nx.subgraph_view(
+        graph,
+        filter_edge=lambda left, right: graph.edges[left, right].get("link_type")
+        != "normal_traffic",
+    )
+
+    return nx.shortest_path(physical_view, source, target)
+
+
+def apply_traffic_weight_to_path(
+    graph: nx.Graph, physical_path: list[str], weight: int
+) -> None:
+    """Add one endpoint conversation's weight to every physical hop it uses."""
+    for source, target in zip(physical_path[:-1], physical_path[1:], strict=True):
+        attributes = graph.edges[source, target]
+        attributes["weight"] += weight
+        attributes["weight_unit"] = EDGE_WEIGHT_UNIT
+
+
+def sample_traffic_weight(traffic_label: str, rng: np.random.Generator) -> int:
+    """Sample how often two nodes communicate in one time window."""
+    min_weight, max_weight = TRAFFIC_WEIGHT_RANGES[traffic_label]
+
+    return int(rng.integers(min_weight, max_weight + 1))
 
 
 def group_nodes_by_category(graph: nx.Graph) -> dict[str, list[str]]:
@@ -217,14 +274,33 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
     }
 
     unexpected_edges = []
+    invalid_weighted_edges = []
+
     for source, target, attributes in graph.edges(data=True):
         link_type = attributes.get("link_type")
         if link_type not in allowed_link_types:
             unexpected_edges.append((source, target, link_type))
+            continue
+
+        has_numeric_weight = isinstance(attributes.get("weight"), int | float)
+        if not has_numeric_weight or attributes["weight"] < 0:
+            invalid_weighted_edges.append(
+                (source, target, link_type, attributes.get("weight"))
+            )
+            continue
+
+        if "weight_unit" not in attributes:
+            invalid_weighted_edges.append((source, target, link_type, "weight_unit"))
 
     if unexpected_edges and not phase.attack_injection_allowed:
         raise ValueError(
             f"Unexpected edge types in normal-only {phase.name} phase: {unexpected_edges}"
+        )
+
+    if invalid_weighted_edges:
+        raise ValueError(
+            f"Invalid edge-weight attributes in window {graph.graph['window']}: "
+            f"{invalid_weighted_edges}"
         )
 
     if not nx.is_connected(graph):

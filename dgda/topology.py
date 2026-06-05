@@ -10,6 +10,7 @@ from dgda.config import (
     CATEGORY_ROUTER_ASSIGNMENTS,
     CLIENT_IOT_ROUTERS,
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_CATEGORIES,
     ENDPOINT_PREFIXES,
     INTERNAL_SERVER_ROUTER,
@@ -164,10 +165,23 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
             label=f"Switch {router_name}",
         )
 
-        graph.add_edge(router_id, switch_id, link_type="router_to_switch")
+        _add_physical_edge(graph, router_id, switch_id, "router_to_switch")
 
     for source, target in ROUTER_RING_EDGES:
-        graph.add_edge(source, target, link_type="router_backbone")
+        _add_physical_edge(graph, source, target, "router_backbone")
+
+
+def _add_physical_edge(
+    graph: nx.Graph, source: str, target: str, link_type: str
+) -> None:
+    """Add a stable physical link that can accumulate routed traffic weight."""
+    graph.add_edge(
+        source,
+        target,
+        link_type=link_type,
+        weight=0,
+        weight_unit=EDGE_WEIGHT_UNIT,
+    )
 
 
 def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
@@ -190,4 +204,4 @@ def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
                 label=f"{CATEGORY_DISPLAY_NAMES[category]} {index}",
             )
 
-            graph.add_edge(device_id, attached_switch, link_type="access")
+            _add_physical_edge(graph, device_id, attached_switch, "access")
