@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import networkx as nx
 import numpy as np
+from networkx.linalg.laplacianmatrix import laplacian_matrix
 
 from dgda.config import (
     DEVICE_COUNTS,
@@ -52,6 +53,12 @@ def create_dynamic_graph_windows(
 
         validate_window_snapshot(snapshot, phase)
         windows.append(snapshot)
+
+        #nodes = sorted(snapshot.nodes, key=lambda node: (snapshot.nodes[node]["category"], node))
+
+        #lap_mat = laplacian_matrix(snapshot, nodelist=nodes, weight="weight").toarray()
+
+        #print(lap_mat)
 
     return windows
 

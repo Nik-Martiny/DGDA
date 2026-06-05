@@ -99,8 +99,8 @@ ENDPOINT_PREFIXES = {
 
 ENDPOINT_UP_PROBABILITIES = {
     "client_workstation": 0.92,
-    "internal_server": 0.99,
-    "web_edge_server": 0.99,
+    "internal_server": 1,
+    "web_edge_server": 1,
     "iot_peripheral": 0.84,
 }
 
