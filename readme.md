@@ -43,8 +43,10 @@ interpret the data collected and cast better judgment on how to handle the netwo
 
 ## Initial network simulation
 
-The first implementation step is available in `main.py`. It builds a deterministic
-NetworkX simulation with exactly 200 devices split across the requested categories:
+The implementation is split into small files under the `dgda/` package. The
+`main.py` file remains as a compatibility entry point for `python main.py` and
+older imports. The simulation builds a deterministic NetworkX network with
+exactly 200 devices split across the requested categories:
 
 * 80 client workstations
 * 40 internal servers
@@ -57,7 +59,7 @@ The infrastructure layer contains two five-router rings: `router_A` through
 `router_F` as the bridge between the two rings. Each router has one attached switch.
 Internal server nodes attach only to `router_F` through `switch_F`, web/edge
 server nodes attach only to `router_G` through `switch_G`, and client/IoT devices
-attach to the remaining second-ring access switches on routers `H`, `I`, and `J`.
+attach to client/IoT access switches on routers `A`-`E` and `H`-`J`.
 Running the script prints a summary and saves a visualization to
 `network_topology.png`.
 
@@ -65,9 +67,29 @@ Running the script prints a summary and saves a visualization to
 python main.py
 ```
 
+
+## Code organization
+
+The codebase is intentionally separated by implementation responsibility:
+
+* `dgda/config.py` stores counts, topology rules, traffic rules, random seed values,
+  and visualization colors.
+* `dgda/phases.py` defines the named timing phases used by the simulation.
+* `dgda/topology.py` builds and validates the static 200-device physical network.
+* `dgda/dynamics.py` creates time-window snapshots, endpoint churn, normal traffic,
+  and the attack injection hook.
+* `dgda/visualization.py` contains PNG, heatmap, matrix, layout, and GIF helpers.
+* `dgda/cli.py` contains command-line parsing, printed summaries, and the main run
+  workflow.
+* `main.py` re-exports the public functions so existing examples still work.
+
+The functions include docstrings that explain why each step matters to the
+simulation. Comments are kept close to logic that benefits from explanation, while
+straightforward Python statements are left readable instead of being over-commented.
+
 ## Dynamic timing-window simulation
 
-`main.py` now builds the dynamic graph as 500 one-indexed discrete time windows.
+The dynamic simulation builds 500 one-indexed discrete time windows.
 Each window is a NetworkX graph snapshot with stable router/switch infrastructure,
 normal endpoint churn, and transient normal communication edges that appear and
 disappear between windows. The deterministic seed keeps the dynamic graph
@@ -122,7 +144,15 @@ how the graph changes across the discrete timing windows:
   window. Nodes are ordered by device category so dense all-to-all connection
   patterns are easier to inspect than in a crowded node-link drawing.
 
-Running the script writes these visual artifacts for all 500 windows by default:
+Running the script writes these visual artifacts for all 500 windows by default.
+Rendering a 500-frame GIF can take time, so use `--skip-animation` when you only
+need summaries and PNG files:
+
+```bash
+python main.py --skip-animation
+```
+
+Run without `--skip-animation` when you want the GIF as well:
 
 ```bash
 python main.py
