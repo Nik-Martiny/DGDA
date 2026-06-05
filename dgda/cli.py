@@ -81,7 +81,9 @@ def print_summary(graph: nx.Graph) -> None:
     """Print a compact summary of the static 200-device topology."""
     category_counts = Counter(nx.get_node_attributes(graph, "category").values())
 
-    print(f"Created {graph.number_of_nodes()} devices and {graph.number_of_edges()} links.")
+    print(
+        f"Created {graph.number_of_nodes()} devices and {graph.number_of_edges()} links."
+    )
 
     for category, expected_count in DEVICE_COUNTS.items():
         print(
@@ -136,7 +138,9 @@ def main() -> None:
     dynamic_windows = create_dynamic_graph_windows()
     print_dynamic_summary(dynamic_windows)
 
-    selected_windows = select_window_range(dynamic_windows, args.start_window, args.end_window)
+    selected_windows = select_window_range(
+        dynamic_windows, args.start_window, args.end_window
+    )
     matrix_window = args.matrix_window
 
     if matrix_window is None:

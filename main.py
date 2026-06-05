@@ -11,6 +11,7 @@ from dgda import (  # noqa: F401
     CATEGORY_COLORS,
     CATEGORY_DISPLAY_NAMES,
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_CATEGORIES,
     INFRASTRUCTURE_CATEGORIES,
     LINK_TYPE_ALPHAS,
@@ -18,6 +19,7 @@ from dgda import (  # noqa: F401
     LINK_TYPE_WIDTHS,
     NORMAL_TRAFFIC_RULES,
     PHASE_COLORS,
+    PHYSICAL_LINK_CAPACITY_MBPS,
     RNG_SEED,
     ROUTER_NAMES,
     ROUTER_RING_EDGES,
@@ -25,6 +27,8 @@ from dgda import (  # noqa: F401
     TIMING_PHASES,
     TOTAL_DEVICES,
     TOTAL_TIME_WINDOWS,
+    TRAFFIC_PACKET_PROFILES,
+    TRAFFIC_WINDOW_SECONDS,
     TimingPhase,
     animate_dynamic_graph_windows,
     create_dynamic_graph_windows,
@@ -37,7 +41,6 @@ from dgda import (  # noqa: F401
     select_window_range,
 )
 from dgda.cli import main
-
 
 if __name__ == "__main__":
     main()

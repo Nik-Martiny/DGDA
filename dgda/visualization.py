@@ -28,7 +28,9 @@ from dgda.phases import TIMING_PHASES
 from dgda.topology import create_network
 
 
-def draw_network(graph: nx.Graph, output_path: str | Path = "network_topology.png") -> Path:
+def draw_network(
+    graph: nx.Graph, output_path: str | Path = "network_topology.png"
+) -> Path:
     """Render one graph snapshot as a PNG image.
 
     This view is useful for a quick human check of the simulated topology.  It
@@ -110,7 +112,9 @@ def select_window_range(
             selected_windows.append(graph)
 
     if not selected_windows:
-        raise ValueError(f"No windows found in requested range {start_window}-{end_window}.")
+        raise ValueError(
+            f"No windows found in requested range {start_window}-{end_window}."
+        )
 
     return selected_windows
 
@@ -261,7 +265,7 @@ def draw_window_connection_matrix(
     """
     output_path = Path(output_path)
     nodes = sorted(graph.nodes, key=lambda node: (graph.nodes[node]["category"], node))
-    matrix = nx.to_numpy_array(graph, nodelist=nodes)
+    matrix = nx.to_numpy_array(graph, nodelist=nodes, weight=None)
     color_map = ListedColormap(["#F8FAFC", "#0EA5E9"])
 
     figure, axis = plt.subplots(figsize=(12, 12))
@@ -353,7 +357,11 @@ def draw_animation_frame(
         framealpha=0.92,
         fontsize=9,
     )
-    axis.set_title(animation_title(graph, first_window, last_window), fontsize=18, fontweight="bold")
+    axis.set_title(
+        animation_title(graph, first_window, last_window),
+        fontsize=18,
+        fontweight="bold",
+    )
     axis.axis("off")
     axis.set_aspect("equal")
 
@@ -424,7 +432,9 @@ def draw_infrastructure_labels(
         label = label.replace("Switch ", "S")
         labels[node] = label
 
-    nx.draw_networkx_labels(graph, positions, labels=labels, font_size=8, font_weight="bold", ax=axis)
+    nx.draw_networkx_labels(
+        graph, positions, labels=labels, font_size=8, font_weight="bold", ax=axis
+    )
 
 
 def draw_timeline_bar(
@@ -446,8 +456,22 @@ def draw_timeline_bar(
 
         start = (overlap_start - selected_start_window) / selected_span
         width = (overlap_end - overlap_start + 1) / selected_span
-        inset.barh(0, width, left=start, height=1, color=PHASE_COLORS[phase.name], edgecolor="white")
-        inset.text(start + width / 2, 0, phase.name.replace("_", "\n"), ha="center", va="center", fontsize=8)
+        inset.barh(
+            0,
+            width,
+            left=start,
+            height=1,
+            color=PHASE_COLORS[phase.name],
+            edgecolor="white",
+        )
+        inset.text(
+            start + width / 2,
+            0,
+            phase.name.replace("_", "\n"),
+            ha="center",
+            va="center",
+            fontsize=8,
+        )
 
     marker_position = (current_window - selected_start_window) / selected_span
     inset.axvline(marker_position, color="#0F172A", linewidth=2.2)

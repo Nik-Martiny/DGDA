@@ -10,9 +10,11 @@ from dgda.config import (
     CATEGORY_ROUTER_ASSIGNMENTS,
     CLIENT_IOT_ROUTERS,
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_CATEGORIES,
     ENDPOINT_PREFIXES,
     INTERNAL_SERVER_ROUTER,
+    PHYSICAL_LINK_CAPACITY_MBPS,
     RNG_SEED,
     ROUTER_NAMES,
     ROUTER_RING_EDGES,
@@ -140,6 +142,35 @@ def validate_network(graph: nx.Graph) -> None:
             f"{misplaced_endpoints}"
         )
 
+    invalid_physical_edges = []
+    required_edge_attributes = (
+        "capacity_mbps",
+        "packet_load",
+        "byte_load",
+        "active_flows",
+        "utilization",
+        "weight",
+        "weight_unit",
+    )
+
+    for source, target, attributes in graph.edges(data=True):
+        missing_attributes = [
+            attribute
+            for attribute in required_edge_attributes
+            if attribute not in attributes
+        ]
+        link_type = attributes.get("link_type")
+
+        if link_type not in PHYSICAL_LINK_CAPACITY_MBPS or missing_attributes:
+            invalid_physical_edges.append(
+                (source, target, link_type, tuple(missing_attributes))
+            )
+
+    if invalid_physical_edges:
+        raise ValueError(
+            f"Physical edge packet attributes are invalid: {invalid_physical_edges}"
+        )
+
 
 def _add_router_and_switch_layer(graph: nx.Graph) -> None:
     """Add routers, switches, backbone links, and router-to-switch links."""
@@ -164,10 +195,33 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
             label=f"Switch {router_name}",
         )
 
-        graph.add_edge(router_id, switch_id, link_type="router_to_switch")
+        _add_physical_edge(graph, router_id, switch_id, "router_to_switch")
 
     for source, target in ROUTER_RING_EDGES:
-        graph.add_edge(source, target, link_type="router_backbone")
+        _add_physical_edge(graph, source, target, "router_backbone")
+
+
+def _add_physical_edge(
+    graph: nx.Graph, source: str, target: str, link_type: str
+) -> None:
+    """Add a stable physical link with packet-load bookkeeping fields.
+
+    Dynamic windows reuse these attributes so packet modeling has a consistent
+    edge schema before any transient traffic is routed through the topology.
+    """
+    capacity_mbps = PHYSICAL_LINK_CAPACITY_MBPS[link_type]
+    graph.add_edge(
+        source,
+        target,
+        link_type=link_type,
+        capacity_mbps=capacity_mbps,
+        packet_load=0,
+        byte_load=0,
+        active_flows=0,
+        utilization=0.0,
+        weight=0,
+        weight_unit=EDGE_WEIGHT_UNIT,
+    )
 
 
 def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
@@ -190,4 +244,4 @@ def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:
                 label=f"{CATEGORY_DISPLAY_NAMES[category]} {index}",
             )
 
-            graph.add_edge(device_id, attached_switch, link_type="access")
+            _add_physical_edge(graph, device_id, attached_switch, "access")

@@ -7,10 +7,13 @@ import numpy as np
 
 from dgda.config import (
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_UP_PROBABILITIES,
     INFRASTRUCTURE_CATEGORIES,
     NORMAL_TRAFFIC_RULES,
     RNG_SEED,
+    TRAFFIC_PACKET_PROFILES,
+    TRAFFIC_WINDOW_SECONDS,
     TOTAL_TIME_WINDOWS,
 )
 from dgda.phases import TIMING_PHASES, TimingPhase
@@ -105,11 +108,16 @@ def create_normal_window_snapshot(
         attack_injection_allowed=phase.attack_injection_allowed,
         ground_truth_attack_phase=phase.attack_injection_allowed,
         ground_truth_label="attack" if phase.attack_injection_allowed else "normal",
-        traffic_mode="normal_with_attack_slot"
-        if phase.attack_injection_allowed
-        else "normal_only",
+        traffic_mode=(
+            "normal_with_attack_slot"
+            if phase.attack_injection_allowed
+            else "normal_only"
+        ),
+        edge_weight_unit=EDGE_WEIGHT_UNIT,
+        traffic_window_seconds=TRAFFIC_WINDOW_SECONDS,
     )
 
+    reset_physical_edge_loads(snapshot)
     add_normal_traffic_edges(snapshot, rng, window)
     return snapshot
 
@@ -176,15 +184,96 @@ def add_normal_traffic_edges(
             if graph.has_edge(source, target):
                 continue
 
+            routed_path = shortest_physical_path(graph, source, target)
+            packet_count, avg_packet_size_bytes, byte_count = sample_packet_flow(
+                TRAFFIC_PACKET_PROFILES[traffic_label], rng
+            )
+            apply_packet_load_to_path(graph, routed_path, packet_count, byte_count)
+
             graph.add_edge(
                 source,
                 target,
                 link_type="normal_traffic",
                 traffic_profile=traffic_label,
+                traffic_description=TRAFFIC_PACKET_PROFILES[traffic_label][
+                    "description"
+                ],
                 transient=True,
                 window=window,
+                routed_path=tuple(routed_path),
+                hop_count=len(routed_path) - 1,
+                packet_count=packet_count,
+                avg_packet_size_bytes=avg_packet_size_bytes,
+                byte_count=byte_count,
+                weight=packet_count,
+                weight_unit=EDGE_WEIGHT_UNIT,
             )
             added_edges += 1
+
+
+def reset_physical_edge_loads(graph: nx.Graph) -> None:
+    """Clear per-window packet load counters on stable physical links."""
+    for _source, _target, attributes in graph.edges(data=True):
+        if attributes.get("link_type") == "normal_traffic":
+            continue
+
+        attributes["packet_load"] = 0
+        attributes["byte_load"] = 0
+        attributes["active_flows"] = 0
+        attributes["utilization"] = 0.0
+        attributes["weight"] = 0
+        attributes["weight_unit"] = EDGE_WEIGHT_UNIT
+
+
+def shortest_physical_path(graph: nx.Graph, source: str, target: str) -> list[str]:
+    """Return the switch/router path used by a transient endpoint conversation.
+
+    Communication is not modeled as magic endpoint-to-endpoint adjacency.  The
+    generated traffic edge records the conversation, while this path carries the
+    packet load through access switches and routers just like a real network.
+    """
+
+    physical_view = nx.subgraph_view(
+        graph,
+        filter_edge=lambda left, right: graph.edges[left, right].get("link_type")
+        != "normal_traffic",
+    )
+
+    return nx.shortest_path(physical_view, source, target)
+
+
+def sample_packet_flow(
+    profile: dict[str, tuple[int, int] | str], rng: np.random.Generator
+) -> tuple[int, int, int]:
+    """Sample packet and byte volume for one normal conversation profile."""
+    min_packets, max_packets = profile["packet_count_range"]
+    min_packet_size, max_packet_size = profile["avg_packet_size_bytes_range"]
+
+    packet_count = int(rng.integers(min_packets, max_packets + 1))
+    avg_packet_size_bytes = int(rng.integers(min_packet_size, max_packet_size + 1))
+    byte_count = packet_count * avg_packet_size_bytes
+
+    return packet_count, avg_packet_size_bytes, byte_count
+
+
+def apply_packet_load_to_path(
+    graph: nx.Graph, routed_path: list[str], packet_count: int, byte_count: int
+) -> None:
+    """Accumulate one conversation's packets on every physical hop it crosses."""
+    for source, target in zip(routed_path[:-1], routed_path[1:], strict=True):
+        attributes = graph.edges[source, target]
+        attributes["packet_load"] += packet_count
+        attributes["byte_load"] += byte_count
+        attributes["active_flows"] += 1
+        attributes["weight"] = attributes["packet_load"]
+
+        capacity_mbps = attributes.get("capacity_mbps")
+        if capacity_mbps:
+            bits_per_window = attributes["byte_load"] * 8
+            capacity_bits_per_window = (
+                capacity_mbps * 1_000_000 * TRAFFIC_WINDOW_SECONDS
+            )
+            attributes["utilization"] = bits_per_window / capacity_bits_per_window
 
 
 def group_nodes_by_category(graph: nx.Graph) -> dict[str, list[str]]:
@@ -217,14 +306,46 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
     }
 
     unexpected_edges = []
+    invalid_weighted_edges = []
+
     for source, target, attributes in graph.edges(data=True):
         link_type = attributes.get("link_type")
         if link_type not in allowed_link_types:
             unexpected_edges.append((source, target, link_type))
+            continue
+
+        has_numeric_weight = isinstance(attributes.get("weight"), int | float)
+        if not has_numeric_weight or attributes["weight"] < 0:
+            invalid_weighted_edges.append(
+                (source, target, link_type, attributes.get("weight"))
+            )
+            continue
+
+        if link_type == "normal_traffic":
+            required_fields = ("packet_count", "byte_count", "routed_path", "hop_count")
+        else:
+            required_fields = (
+                "packet_load",
+                "byte_load",
+                "active_flows",
+                "utilization",
+            )
+
+        missing_fields = [field for field in required_fields if field not in attributes]
+        if missing_fields:
+            invalid_weighted_edges.append(
+                (source, target, link_type, tuple(missing_fields))
+            )
 
     if unexpected_edges and not phase.attack_injection_allowed:
         raise ValueError(
             f"Unexpected edge types in normal-only {phase.name} phase: {unexpected_edges}"
+        )
+
+    if invalid_weighted_edges:
+        raise ValueError(
+            f"Invalid packet-weight attributes in window {graph.graph['window']}: "
+            f"{invalid_weighted_edges}"
         )
 
     if not nx.is_connected(graph):
