@@ -64,21 +64,18 @@ LINK_TYPE_COLORS = {
     "router_backbone": "#1F2937",
     "router_to_switch": "#6B7280",
     "access": "#D1D5DB",
-    "normal_traffic": "#38BDF8",
 }
 
 LINK_TYPE_WIDTHS = {
     "router_backbone": 2.8,
     "router_to_switch": 1.8,
     "access": 0.55,
-    "normal_traffic": 0.45,
 }
 
 LINK_TYPE_ALPHAS = {
     "router_backbone": 0.9,
     "router_to_switch": 0.65,
     "access": 0.24,
-    "normal_traffic": 0.55,
 }
 
 ENDPOINT_CATEGORIES = (
@@ -113,13 +110,13 @@ NORMAL_TRAFFIC_RULES = (
     ("client_workstation", "client_workstation", 8, 18, "client_peer"),
 )
 
-# Edge weights represent how many times nodes communicate during one dynamic
-# time window.  Transient endpoint edges receive sampled communication counts;
-# physical switch/router edges accumulate the counts routed through them.
-# Ranges differ by traffic profile so lightweight IoT chatter, routine client
-# traffic, and heavier server/web activity are distinct without modeling
-# packet-level internals.
-EDGE_WEIGHT_UNIT = "communications_per_window"
+# Edge weights represent how many packets traverse physical links during one
+# dynamic time window. Endpoint conversations are kept as graph-level flow
+# metadata instead of direct edges; physical switch/router/access links aggregate
+# the packet counts routed through them. Ranges differ by traffic profile so
+# lightweight IoT chatter, routine client traffic, and heavier server/web
+# activity are distinct without modeling individual packet internals.
+EDGE_WEIGHT_UNIT = "packets_per_window"
 TRAFFIC_WEIGHT_RANGES = {
     "iot_to_internal": (1, 5),
     "iot_to_client": (1, 4),

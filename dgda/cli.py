@@ -107,11 +107,15 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     phase_counts = Counter()
     node_counts = []
     edge_counts = []
+    flow_counts = []
+    packet_counts = []
 
     for graph in all_windows:
         phase_counts[graph.graph["phase"]] += 1
         node_counts.append(graph.number_of_nodes())
         edge_counts.append(graph.number_of_edges())
+        flow_counts.append(graph.graph.get("communication_flow_count", 0))
+        packet_counts.append(graph.graph.get("communication_packet_count", 0))
 
     print(f"Generated {len(all_windows)} dynamic graph windows.")
 
@@ -124,7 +128,9 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     print(
         "Dynamic snapshot range: "
         f"{min(node_counts)}-{max(node_counts)} active nodes, "
-        f"{min(edge_counts)}-{max(edge_counts)} active links."
+        f"{min(edge_counts)}-{max(edge_counts)} physical links, "
+        f"{min(flow_counts)}-{max(flow_counts)} routed flows, "
+        f"{min(packet_counts)}-{max(packet_counts)} packets."
     )
     print("Attack injection hook enabled only for windows 251-350.")
 
