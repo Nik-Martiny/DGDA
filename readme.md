@@ -126,30 +126,26 @@ Future attack implementations can pass an `attack_injector` callback to
 which prevents attack traffic from leaking into the baseline, pre-attack, or
 recovery phases.
 
-## Packet-aware edge weights
+## Weighted communication edges
 
-Dynamic windows now use `weight` as a packet-load value measured in
-`packets_per_window`.  Normal communication edges receive a sampled
-`packet_count`, `byte_count`, average packet size, hop count, and the exact
-`routed_path` through switches and routers.  The same packet count is stored in
-the edge `weight` field so downstream graph algorithms can consume weighted
-traffic directly.
+Dynamic windows use `weight` as a simple count of how many times two endpoint
+nodes communicate during one time window.  The simulation does not model
+packet-level internals; each transient `normal_traffic` edge gets one integer
+weight sampled from the traffic profile for that device pairing.
 
 Traffic profiles are intentionally different by communicating device type:
-IoT-to-internal telemetry is low volume, client-to-server traffic is moderate,
-web/edge sessions are burstier, and server-to-edge synchronization is the
-heaviest normal flow.  When a transient conversation is generated, its packets
-are accumulated onto every physical access, router-to-switch, and backbone link
-in the routed path.  Physical edges therefore expose per-window `packet_load`,
-`byte_load`, `active_flows`, `utilization`, and `weight` fields in addition to
-the transient communication edge.
+IoT telemetry is low volume, IoT-to-client chatter is also light, routine
+client-to-internal traffic is moderate, web/edge sessions are burstier, and
+server-to-edge synchronization is the heaviest normal communication pattern.
+IoT/peripheral devices can communicate with both internal servers and client
+workstations, making the client/IoT network more realistic than a server-only
+IoT model.
 
-For example, a client communicating with a web/edge server records a direct
-conversation edge for detector readability, but its packet load is also routed
-from the client to its switch, through the appropriate routers, into `switch_G`,
-and finally to the selected web/edge server.  This keeps the graph useful for
-packet modeling while still preserving the higher-level endpoint communication
-signal.
+The topology snapshot visualization uses a stable router/switch layout, colors
+edges by link type, scales normal communication edges by weight, and labels
+normal communication edges with their per-window weight.  This makes the saved
+`network_topology.png` view a true snapshot of who is talking in the selected
+window rather than just a static physical wiring diagram.
 
 ## Dynamic graph visualizations
 

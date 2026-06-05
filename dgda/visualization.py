@@ -20,7 +20,6 @@ from dgda.config import (
     LINK_TYPE_COLORS,
     LINK_TYPE_WIDTHS,
     PHASE_COLORS,
-    RNG_SEED,
     ROUTER_NAMES,
     SWITCH_NAMES,
 )
@@ -38,7 +37,8 @@ def draw_network(
     nodes, and labels only the infrastructure so the image remains readable.
     """
     output_path = Path(output_path)
-    positions = nx.spring_layout(graph, seed=RNG_SEED)
+    reference_graph = create_network() if "window" in graph.graph else graph
+    positions = create_stable_layout(reference_graph)
     node_colors = []
     node_sizes = []
 
@@ -47,8 +47,31 @@ def draw_network(
         node_colors.append(CATEGORY_COLORS[category])
         node_sizes.append(node_size_for_category(category))
 
-    figure, axis = plt.subplots(figsize=(18, 14))
-    nx.draw_networkx_edges(graph, positions, alpha=0.28, width=0.8, ax=axis)
+    figure, axis = plt.subplots(figsize=(20, 16), facecolor="#F8FAFC")
+    axis.set_facecolor(PHASE_COLORS.get(graph.graph.get("phase"), "#FFFFFF"))
+
+    for link_type in LINK_TYPE_COLORS:
+        edges = edges_for_link_type(graph, link_type)
+        if not edges:
+            continue
+
+        width = LINK_TYPE_WIDTHS[link_type]
+        if link_type == "normal_traffic":
+            width = [
+                normal_traffic_edge_width(graph, source, target)
+                for source, target in edges
+            ]
+
+        nx.draw_networkx_edges(
+            graph,
+            positions,
+            edgelist=edges,
+            edge_color=LINK_TYPE_COLORS[link_type],
+            width=width,
+            alpha=LINK_TYPE_ALPHAS[link_type],
+            ax=axis,
+        )
+
     nx.draw_networkx_nodes(
         graph,
         positions,
@@ -60,7 +83,8 @@ def draw_network(
     )
 
     draw_infrastructure_labels(graph, positions, axis)
-    axis.legend(handles=category_legend_handles(), loc="upper right")
+    draw_edge_weight_labels(graph, positions, axis)
+    axis.legend(handles=animation_legend_handles(), loc="upper right")
     axis.set_title(network_title(graph))
     axis.axis("off")
     figure.tight_layout()
@@ -327,12 +351,19 @@ def draw_animation_frame(
         if not edges:
             continue
 
+        width = LINK_TYPE_WIDTHS[link_type]
+        if link_type == "normal_traffic":
+            width = [
+                normal_traffic_edge_width(graph, source, target)
+                for source, target in edges
+            ]
+
         nx.draw_networkx_edges(
             graph,
             positions,
             edgelist=edges,
             edge_color=LINK_TYPE_COLORS[link_type],
-            width=LINK_TYPE_WIDTHS[link_type],
+            width=width,
             alpha=LINK_TYPE_ALPHAS[link_type],
             ax=axis,
         )
@@ -364,6 +395,50 @@ def draw_animation_frame(
     )
     axis.axis("off")
     axis.set_aspect("equal")
+
+
+def normal_traffic_edge_width(graph: nx.Graph, source: str, target: str) -> float:
+    """Scale communication edges by their simple per-window weight."""
+    weight = graph.edges[source, target].get("weight", 1)
+
+    return min(3.2, 0.55 + weight / 25)
+
+
+def draw_edge_weight_labels(
+    graph: nx.Graph, positions: dict[str, tuple[float, float]], axis: plt.Axes
+) -> None:
+    """Draw labels for weighted communication edges in a snapshot."""
+    labels = edge_weight_labels(graph)
+    if not labels:
+        return
+
+    nx.draw_networkx_edge_labels(
+        graph,
+        positions,
+        edge_labels=labels,
+        font_size=6,
+        font_color="#0F172A",
+        rotate=False,
+        bbox={"boxstyle": "round,pad=0.12", "fc": "white", "ec": "none", "alpha": 0.76},
+        ax=axis,
+    )
+
+
+def edge_weight_labels(graph: nx.Graph) -> dict[tuple[str, str], str]:
+    """Return edge-weight labels for the transient communication edges."""
+    labels = {}
+
+    for source, target, attributes in graph.edges(data=True):
+        if attributes.get("link_type") != "normal_traffic":
+            continue
+
+        weight = attributes.get("weight")
+        if weight is None:
+            continue
+
+        labels[(source, target)] = str(weight)
+
+    return labels
 
 
 def attached_switch_for_node(graph: nx.Graph, node: str) -> str:

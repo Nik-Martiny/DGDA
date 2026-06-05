@@ -108,55 +108,25 @@ NORMAL_TRAFFIC_RULES = (
     ("client_workstation", "internal_server", 70, 115, "client_to_internal"),
     ("client_workstation", "web_edge_server", 55, 95, "client_to_web_edge"),
     ("iot_peripheral", "internal_server", 20, 45, "iot_to_internal"),
+    ("iot_peripheral", "client_workstation", 25, 55, "iot_to_client"),
     ("internal_server", "web_edge_server", 15, 35, "server_to_edge"),
     ("client_workstation", "client_workstation", 8, 18, "client_peer"),
 )
 
-# Edge weights are packet-load measurements for a single dynamic time window.
-# Physical edges start each window at zero and accrue packet/byte load for every
-# routed conversation that traverses them.  Transient normal-traffic edges keep
-# the same packet count as their ``weight`` so downstream packet models can use
-# one numeric attribute consistently across all edge types.
-EDGE_WEIGHT_UNIT = "packets_per_window"
-TRAFFIC_WINDOW_SECONDS = 60
-
-# Real networks carry sharply different volumes depending on which device types
-# communicate.  IoT telemetry is intentionally light, client-to-server requests
-# are moderate, public web/edge services can be burstier, and server-to-edge
-# synchronization is the heaviest normal profile represented here.
-TRAFFIC_PACKET_PROFILES = {
-    "iot_to_internal": {
-        "packet_count_range": (4, 80),
-        "avg_packet_size_bytes_range": (96, 384),
-        "description": "Low-rate IoT telemetry and status checks",
-    },
-    "client_peer": {
-        "packet_count_range": (20, 260),
-        "avg_packet_size_bytes_range": (256, 900),
-        "description": "Light workstation-to-workstation collaboration traffic",
-    },
-    "client_to_internal": {
-        "packet_count_range": (80, 950),
-        "avg_packet_size_bytes_range": (384, 1200),
-        "description": "Business application requests to internal services",
-    },
-    "client_to_web_edge": {
-        "packet_count_range": (120, 1400),
-        "avg_packet_size_bytes_range": (512, 1400),
-        "description": "Browser/API sessions to public web or edge servers",
-    },
-    "server_to_edge": {
-        "packet_count_range": (750, 6500),
-        "avg_packet_size_bytes_range": (900, 1500),
-        "description": "Heavy server synchronization, replication, or content updates",
-    },
+# Edge weights represent how many times two endpoint nodes communicate during
+# one dynamic time window.  Ranges differ by traffic profile so lightweight IoT
+# chatter, routine client traffic, and heavier server/web activity are distinct
+# without modeling packet-level internals.
+EDGE_WEIGHT_UNIT = "communications_per_window"
+TRAFFIC_WEIGHT_RANGES = {
+    "iot_to_internal": (1, 5),
+    "iot_to_client": (1, 4),
+    "client_peer": (2, 8),
+    "client_to_internal": (6, 18),
+    "client_to_web_edge": (12, 35),
+    "server_to_edge": (25, 70),
 }
 
-PHYSICAL_LINK_CAPACITY_MBPS = {
-    "access": 100,
-    "router_to_switch": 1000,
-    "router_backbone": 10000,
-}
 
 ROUTER_RING_EDGES = (
     ("router_A", "router_B"),
