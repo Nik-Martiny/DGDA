@@ -113,10 +113,12 @@ NORMAL_TRAFFIC_RULES = (
     ("client_workstation", "client_workstation", 8, 18, "client_peer"),
 )
 
-# Edge weights represent how many times two endpoint nodes communicate during
-# one dynamic time window.  Ranges differ by traffic profile so lightweight IoT
-# chatter, routine client traffic, and heavier server/web activity are distinct
-# without modeling packet-level internals.
+# Edge weights represent how many times nodes communicate during one dynamic
+# time window.  Transient endpoint edges receive sampled communication counts;
+# physical switch/router edges accumulate the counts routed through them.
+# Ranges differ by traffic profile so lightweight IoT chatter, routine client
+# traffic, and heavier server/web activity are distinct without modeling
+# packet-level internals.
 EDGE_WEIGHT_UNIT = "communications_per_window"
 TRAFFIC_WEIGHT_RANGES = {
     "iot_to_internal": (1, 5),

@@ -10,6 +10,7 @@ from dgda.config import (
     CATEGORY_ROUTER_ASSIGNMENTS,
     CLIENT_IOT_ROUTERS,
     DEVICE_COUNTS,
+    EDGE_WEIGHT_UNIT,
     ENDPOINT_CATEGORIES,
     ENDPOINT_PREFIXES,
     INTERNAL_SERVER_ROUTER,
@@ -173,8 +174,14 @@ def _add_router_and_switch_layer(graph: nx.Graph) -> None:
 def _add_physical_edge(
     graph: nx.Graph, source: str, target: str, link_type: str
 ) -> None:
-    """Add a stable physical link with a simple default edge weight."""
-    graph.add_edge(source, target, link_type=link_type, weight=1)
+    """Add a stable physical link that can accumulate routed traffic weight."""
+    graph.add_edge(
+        source,
+        target,
+        link_type=link_type,
+        weight=0,
+        weight_unit=EDGE_WEIGHT_UNIT,
+    )
 
 
 def _add_endpoint_devices(graph: nx.Graph, rng: np.random.Generator) -> None:

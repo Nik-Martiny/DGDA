@@ -115,6 +115,7 @@ def create_normal_window_snapshot(
         edge_weight_unit=EDGE_WEIGHT_UNIT,
     )
 
+    reset_physical_edge_weights(snapshot)
     add_normal_traffic_edges(snapshot, rng, window)
     return snapshot
 
@@ -182,6 +183,8 @@ def add_normal_traffic_edges(
                 continue
 
             weight = sample_traffic_weight(traffic_label, rng)
+            physical_path = shortest_physical_path(graph, source, target)
+            apply_traffic_weight_to_path(graph, physical_path, weight)
 
             graph.add_edge(
                 source,
@@ -194,6 +197,37 @@ def add_normal_traffic_edges(
                 weight_unit=EDGE_WEIGHT_UNIT,
             )
             added_edges += 1
+
+
+def reset_physical_edge_weights(graph: nx.Graph) -> None:
+    """Reset stable physical links before routing one window's traffic through them."""
+    for _source, _target, attributes in graph.edges(data=True):
+        if attributes.get("link_type") == "normal_traffic":
+            continue
+
+        attributes["weight"] = 0
+        attributes["weight_unit"] = EDGE_WEIGHT_UNIT
+
+
+def shortest_physical_path(graph: nx.Graph, source: str, target: str) -> list[str]:
+    """Return the switch/router path a communication edge traverses."""
+    physical_view = nx.subgraph_view(
+        graph,
+        filter_edge=lambda left, right: graph.edges[left, right].get("link_type")
+        != "normal_traffic",
+    )
+
+    return nx.shortest_path(physical_view, source, target)
+
+
+def apply_traffic_weight_to_path(
+    graph: nx.Graph, physical_path: list[str], weight: int
+) -> None:
+    """Add one endpoint conversation's weight to every physical hop it uses."""
+    for source, target in zip(physical_path[:-1], physical_path[1:], strict=True):
+        attributes = graph.edges[source, target]
+        attributes["weight"] += weight
+        attributes["weight_unit"] = EDGE_WEIGHT_UNIT
 
 
 def sample_traffic_weight(traffic_label: str, rng: np.random.Generator) -> int:
@@ -248,7 +282,7 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
             )
             continue
 
-        if link_type == "normal_traffic" and "weight_unit" not in attributes:
+        if "weight_unit" not in attributes:
             invalid_weighted_edges.append((source, target, link_type, "weight_unit"))
 
     if unexpected_edges and not phase.attack_injection_allowed:

@@ -55,12 +55,10 @@ def draw_network(
         if not edges:
             continue
 
-        width = LINK_TYPE_WIDTHS[link_type]
-        if link_type == "normal_traffic":
-            width = [
-                normal_traffic_edge_width(graph, source, target)
-                for source, target in edges
-            ]
+        width = [
+            edge_width_for_weight(graph, source, target, link_type)
+            for source, target in edges
+        ]
 
         nx.draw_networkx_edges(
             graph,
@@ -351,12 +349,10 @@ def draw_animation_frame(
         if not edges:
             continue
 
-        width = LINK_TYPE_WIDTHS[link_type]
-        if link_type == "normal_traffic":
-            width = [
-                normal_traffic_edge_width(graph, source, target)
-                for source, target in edges
-            ]
+        width = [
+            edge_width_for_weight(graph, source, target, link_type)
+            for source, target in edges
+        ]
 
         nx.draw_networkx_edges(
             graph,
@@ -397,11 +393,20 @@ def draw_animation_frame(
     axis.set_aspect("equal")
 
 
-def normal_traffic_edge_width(graph: nx.Graph, source: str, target: str) -> float:
-    """Scale communication edges by their simple per-window weight."""
-    weight = graph.edges[source, target].get("weight", 1)
+def edge_width_for_weight(
+    graph: nx.Graph, source: str, target: str, link_type: str
+) -> float:
+    """Scale snapshot and animation edges by their current communication weight."""
+    base_width = LINK_TYPE_WIDTHS[link_type]
+    weight = graph.edges[source, target].get("weight", 0)
 
-    return min(3.2, 0.55 + weight / 25)
+    if weight <= 0:
+        return base_width
+
+    if link_type == "normal_traffic":
+        return min(3.2, 0.55 + weight / 25)
+
+    return min(base_width + 4.0, base_width + np.log1p(weight) / 2.5)
 
 
 def draw_edge_weight_labels(
@@ -425,18 +430,15 @@ def draw_edge_weight_labels(
 
 
 def edge_weight_labels(graph: nx.Graph) -> dict[tuple[str, str], str]:
-    """Return edge-weight labels for the transient communication edges."""
+    """Return labels for every edge carrying non-zero routed traffic weight."""
     labels = {}
 
     for source, target, attributes in graph.edges(data=True):
-        if attributes.get("link_type") != "normal_traffic":
-            continue
-
         weight = attributes.get("weight")
-        if weight is None:
+        if weight is None or weight <= 0:
             continue
 
-        labels[(source, target)] = str(weight)
+        labels[(source, target)] = str(int(weight))
 
     return labels
 

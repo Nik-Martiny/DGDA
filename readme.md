@@ -141,11 +141,20 @@ IoT/peripheral devices can communicate with both internal servers and client
 workstations, making the client/IoT network more realistic than a server-only
 IoT model.
 
+Those same endpoint communication weights are also routed through the physical
+network.  For each transient conversation, the simulation finds the switch/router
+path between the source and destination and adds the conversation weight to every
+physical access, router-to-switch, and backbone edge on that path.  This means a
+switch-to-router link naturally receives the aggregate weight of many endpoint
+conversations, while backbone router links show the traffic that crosses network
+segments.
+
 The topology snapshot visualization uses a stable router/switch layout, colors
-edges by link type, scales normal communication edges by weight, and labels
-normal communication edges with their per-window weight.  This makes the saved
-`network_topology.png` view a true snapshot of who is talking in the selected
-window rather than just a static physical wiring diagram.
+edges by link type, scales all weighted edges by their current load, and labels
+edges carrying non-zero per-window weight.  This makes the saved
+`network_topology.png` view a true snapshot of who is talking and where that
+traffic flows through the network rather than just a static physical wiring
+diagram.
 
 ## Dynamic graph visualizations
 
