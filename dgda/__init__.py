@@ -33,7 +33,6 @@ from dgda.topology import create_network
 from dgda.visualization import (
     animate_dynamic_graph_windows,
     create_stable_layout,
-    draw_connection_activity_heatmap,
     draw_network,
     draw_window_connection_matrix,
     select_window_range,
@@ -66,7 +65,6 @@ __all__ = [
     "create_dynamic_graph_windows",
     "create_network",
     "create_stable_layout",
-    "draw_connection_activity_heatmap",
     "draw_network",
     "draw_window_connection_matrix",
     "phase_for_window",

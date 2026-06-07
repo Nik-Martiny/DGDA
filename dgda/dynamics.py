@@ -54,11 +54,11 @@ def create_dynamic_graph_windows(
         validate_window_snapshot(snapshot, phase)
         windows.append(snapshot)
 
-        #nodes = sorted(snapshot.nodes, key=lambda node: (snapshot.nodes[node]["category"], node))
+        nodes = sorted(snapshot.nodes, key=lambda node: (snapshot.nodes[node]["category"], node))
 
-        #lap_mat = laplacian_matrix(snapshot, nodelist=nodes, weight="weight").toarray()
+        lap_mat = laplacian_matrix(snapshot, nodelist=nodes, weight="weight").toarray()
 
-        #print(lap_mat)
+        print(lap_mat)
 
     return windows
 
@@ -157,13 +157,17 @@ def add_normal_traffic_edges(
     rng: np.random.Generator,
     window: int,
 ) -> None:
-    """Add short-lived normal communication edges to one snapshot.
+    """Route short-lived normal endpoint conversations over physical links.
 
     Physical links describe how devices are cabled through switches and routers.
-    These transient edges describe who is communicating during this specific
-    window, which is the changing signal anomaly detectors will inspect.
+    A normal conversation is now recorded as graph-level flow metadata instead of
+    a direct endpoint-to-endpoint edge.  The sampled packet count is accumulated
+    on every physical hop along the best switch/router path, so endpoint devices
+    only communicate through their access switch, router, and backbone links.
     """
     nodes_by_category = group_nodes_by_category(graph)
+    communication_flows = graph.graph.setdefault("communication_flows", [])
+    used_flow_pairs: set[tuple[str, str, str]] = set()
 
     for rule in NORMAL_TRAFFIC_RULES:
         source_category, target_category, min_edges, max_edges, traffic_label = rule
@@ -186,24 +190,30 @@ def add_normal_traffic_edges(
             if source == target:
                 continue
 
-            if graph.has_edge(source, target):
+            flow_key = ordered_flow_key(source, target, traffic_label)
+            if flow_key in used_flow_pairs:
                 continue
 
-            weight = sample_traffic_weight(traffic_label, rng)
+            packet_count = sample_traffic_weight(traffic_label, rng)
             physical_path = shortest_physical_path(graph, source, target)
-            apply_traffic_weight_to_path(graph, physical_path, weight)
-
-            graph.add_edge(
-                source,
-                target,
-                link_type="normal_traffic",
-                traffic_profile=traffic_label,
-                transient=True,
-                window=window,
-                weight=weight,
-                weight_unit=EDGE_WEIGHT_UNIT,
+            apply_traffic_weight_to_path(graph, physical_path, packet_count)
+            communication_flows.append(
+                {
+                    "source": source,
+                    "target": target,
+                    "traffic_profile": traffic_label,
+                    "packet_count": packet_count,
+                    "path": tuple(physical_path),
+                    "window": window,
+                }
             )
+            used_flow_pairs.add(flow_key)
             added_edges += 1
+
+    graph.graph["communication_flow_count"] = len(communication_flows)
+    graph.graph["communication_packet_count"] = sum(
+        flow["packet_count"] for flow in communication_flows
+    )
 
 
 def reset_physical_edge_weights(graph: nx.Graph) -> None:
@@ -217,7 +227,7 @@ def reset_physical_edge_weights(graph: nx.Graph) -> None:
 
 
 def shortest_physical_path(graph: nx.Graph, source: str, target: str) -> list[str]:
-    """Return the switch/router path a communication edge traverses."""
+    """Return the best physical path between endpoints through infrastructure."""
     physical_view = nx.subgraph_view(
         graph,
         filter_edge=lambda left, right: graph.edges[left, right].get("link_type")
@@ -225,6 +235,14 @@ def shortest_physical_path(graph: nx.Graph, source: str, target: str) -> list[st
     )
 
     return nx.shortest_path(physical_view, source, target)
+
+
+def ordered_flow_key(source: str, target: str, traffic_label: str) -> tuple[str, str, str]:
+    """Return a stable key for one undirected endpoint conversation."""
+    if source <= target:
+        return (source, target, traffic_label)
+
+    return (target, source, traffic_label)
 
 
 def apply_traffic_weight_to_path(
@@ -270,11 +288,11 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
         "router_to_switch",
         "router_backbone",
         "access",
-        "normal_traffic",
     }
 
     unexpected_edges = []
     invalid_weighted_edges = []
+    direct_endpoint_edges = []
 
     for source, target, attributes in graph.edges(data=True):
         link_type = attributes.get("link_type")
@@ -292,9 +310,26 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
         if "weight_unit" not in attributes:
             invalid_weighted_edges.append((source, target, link_type, "weight_unit"))
 
+        source_category = graph.nodes[source]["category"]
+        target_category = graph.nodes[target]["category"]
+        both_are_endpoints = (
+            source_category not in INFRASTRUCTURE_CATEGORIES
+            and target_category not in INFRASTRUCTURE_CATEGORIES
+        )
+        if both_are_endpoints:
+            direct_endpoint_edges.append((source, target, link_type))
+
+    validate_communication_flows(graph)
+
     if unexpected_edges and not phase.attack_injection_allowed:
         raise ValueError(
             f"Unexpected edge types in normal-only {phase.name} phase: {unexpected_edges}"
+        )
+
+    if direct_endpoint_edges and not phase.attack_injection_allowed:
+        raise ValueError(
+            f"Direct endpoint edges are not allowed in window {graph.graph['window']}: "
+            f"{direct_endpoint_edges}"
         )
 
     if invalid_weighted_edges:
@@ -305,3 +340,43 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
 
     if not nx.is_connected(graph):
         raise ValueError(f"Window {graph.graph['window']} is not connected.")
+
+
+def validate_communication_flows(graph: nx.Graph) -> None:
+    """Validate graph-level endpoint flow metadata and routed packet counts."""
+    flows = graph.graph.get("communication_flows", [])
+    packet_total = 0
+
+    if graph.graph.get("communication_flow_count", len(flows)) != len(flows):
+        raise ValueError(
+            f"Flow-count metadata does not match in window {graph.graph['window']}."
+        )
+
+    for flow in flows:
+        source = flow.get("source")
+        target = flow.get("target")
+        path = list(flow.get("path", ()))
+        packet_count = flow.get("packet_count")
+
+        if source not in graph or target not in graph:
+            raise ValueError(f"Flow references inactive nodes: {flow}")
+
+        if graph.has_edge(source, target):
+            raise ValueError(f"Flow was also modeled as a direct graph edge: {flow}")
+
+        if not isinstance(packet_count, int) or packet_count <= 0:
+            raise ValueError(f"Flow has invalid packet count: {flow}")
+
+        if path[:1] != [source] or path[-1:] != [target]:
+            raise ValueError(f"Flow path endpoints do not match source/target: {flow}")
+
+        for left, right in zip(path[:-1], path[1:], strict=True):
+            if not graph.has_edge(left, right):
+                raise ValueError(f"Flow path uses a missing physical edge: {flow}")
+
+        packet_total += packet_count
+
+    if graph.graph.get("communication_packet_count", packet_total) != packet_total:
+        raise ValueError(
+            f"Packet-count metadata does not match in window {graph.graph['window']}."
+        )

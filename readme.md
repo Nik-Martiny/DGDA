@@ -11,7 +11,7 @@ The main idea stems from the modeling of a communication network as a graph.
 Rather than looking at individual packets, we will treat the entire network as a social network map.
 
 * Every device (PC, server, router) is a **node**
-* Every communication between two nodes is an **edge**
+* Every physical cable or routed network hop is an **edge**; endpoint conversations are recorded as routed packet flows over those edges
 * The map will **evolve** over time (time-evolving graph)
 
 
@@ -91,10 +91,12 @@ straightforward Python statements are left readable instead of being over-commen
 
 The dynamic simulation builds 500 one-indexed discrete time windows.
 Each window is a NetworkX graph snapshot with stable router/switch infrastructure,
-normal endpoint churn, and transient normal communication edges that appear and
-disappear between windows. The deterministic seed keeps the dynamic graph
-reproducible while still allowing active endpoints and communication links to vary
-across time.
+normal endpoint churn, and routed normal communication flows stored as graph
+metadata. Endpoint conversations no longer create direct endpoint-to-endpoint
+edges; instead, their packet counts are accumulated on the physical access,
+switch, router, and backbone links they traverse. The deterministic seed keeps
+the dynamic graph reproducible while still allowing active endpoints and routed
+traffic loads to vary across time.
 
 The timing layout is:
 
@@ -126,12 +128,13 @@ Future attack implementations can pass an `attack_injector` callback to
 which prevents attack traffic from leaking into the baseline, pre-attack, or
 recovery phases.
 
-## Weighted communication edges
+## Routed packet flows
 
-Dynamic windows use `weight` as a simple count of how many times two endpoint
-nodes communicate during one time window.  The simulation does not model
-packet-level internals; each transient `normal_traffic` edge gets one integer
-weight sampled from the traffic profile for that device pairing.
+Dynamic windows use `weight` as a simple count of how many packets traverse a
+physical link during one time window. The simulation does not add transient
+`normal_traffic` edges between endpoint devices. Instead, each endpoint
+conversation is recorded in `graph.graph["communication_flows"]` with a source,
+destination, traffic profile, packet count, and selected physical path.
 
 Traffic profiles are intentionally different by communicating device type:
 IoT telemetry is low volume, IoT-to-client chatter is also light, routine
@@ -141,20 +144,21 @@ IoT/peripheral devices can communicate with both internal servers and client
 workstations, making the client/IoT network more realistic than a server-only
 IoT model.
 
-Those same endpoint communication weights are also routed through the physical
-network.  For each transient conversation, the simulation finds the switch/router
-path between the source and destination and adds the conversation weight to every
-physical access, router-to-switch, and backbone edge on that path.  This means a
-switch-to-router link naturally receives the aggregate weight of many endpoint
-conversations, while backbone router links show the traffic that crosses network
-segments.
+Those endpoint packet counts are routed through the physical network. For each
+conversation, the simulation finds the best available physical path from the
+source endpoint to its access switch, through routers/switches and backbone
+links, and finally to the destination endpoint's access switch. It then adds the
+packet count to every physical access, router-to-switch, and backbone edge on
+that path. This means a switch-to-router link naturally receives the aggregate
+weight of many endpoint conversations, while backbone router links show the
+traffic that crosses network segments.
 
 The topology snapshot visualization uses a stable router/switch layout, colors
-edges by link type, scales all weighted edges by their current load, and labels
-edges carrying non-zero per-window weight.  This makes the saved
-`network_topology.png` view a true snapshot of who is talking and where that
-traffic flows through the network rather than just a static physical wiring
-diagram.
+edges by link type, scales all weighted physical edges by their current packet
+load, and labels edges carrying non-zero per-window weight. This makes the saved
+`network_topology.png` view a true snapshot of where traffic flows through the
+network rather than a set of unrealistic direct device-to-device communication
+edges.
 
 ## Dynamic graph visualizations
 
@@ -165,11 +169,11 @@ how the graph changes across the discrete timing windows:
   advances sequentially through the generated windows. It uses a stable layout so
   devices stay in the same place across frames, phase-colored backgrounds, a
   timeline progress bar, category colors, and separate edge styling for backbone,
-  router/switch, access, and transient normal-traffic links.
-* `draw_connection_activity_heatmap()` creates a whole-simulation edge activity
-  heatmap. Columns are windows 1-500 and rows are every unique edge observed in
-  the run, making it easy to see when individual connections appear, disappear,
-  or persist across phases.
+  router/switch, and access links.
+* `draw_connection_activity_heatmap()` creates a whole-simulation routed-packet
+  activity heatmap. Columns are windows 1-500 and rows are physical links that
+  carried traffic in at least one selected window, making it easy to see when
+  links become busy, idle, or persist across phases.
 * `draw_window_connection_matrix()` creates an adjacency-matrix view for a single
   window. Nodes are ordered by device category so dense all-to-all connection
   patterns are easier to inspect than in a crowded node-link drawing.

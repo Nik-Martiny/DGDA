@@ -233,48 +233,6 @@ def animate_dynamic_graph_windows(
 
     return output_path
 
-
-def draw_connection_activity_heatmap(
-    windows: Iterable[nx.Graph],
-    output_path: str | Path = "connection_activity_heatmap.png",
-    start_window: int | None = None,
-    end_window: int | None = None,
-) -> Path:
-    """Draw when each observed edge exists across the selected windows.
-
-    Rows are unique edges and columns are time windows.  A filled cell means that
-    connection existed in that window.  This is helpful for spotting persistent
-    infrastructure links and bursty transient traffic.
-    """
-    selected_windows = select_window_range(windows, start_window, end_window)
-    output_path = Path(output_path)
-    observed_edges = unique_edges(selected_windows)
-    matrix = np.zeros((len(observed_edges), len(selected_windows)), dtype=int)
-
-    edge_to_row = {}
-    for row, edge in enumerate(observed_edges):
-        edge_to_row[edge] = row
-
-    for column, graph in enumerate(selected_windows):
-        for source, target in graph.edges:
-            edge = ordered_edge(source, target)
-            row = edge_to_row[edge]
-            matrix[row, column] = 1
-
-    figure_height = max(6, min(24, len(observed_edges) * 0.08))
-    figure, axis = plt.subplots(figsize=(16, figure_height))
-    axis.imshow(matrix, aspect="auto", interpolation="nearest", cmap="Blues")
-    axis.set_title("Connection Activity Across Dynamic Graph Windows")
-    axis.set_xlabel("Selected window index")
-    axis.set_ylabel("Observed edge")
-    axis.set_yticks([])
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=180)
-    plt.close(figure)
-
-    return output_path
-
-
 def draw_window_connection_matrix(
     graph: nx.Graph,
     output_path: str | Path = "window_connection_matrix.png",
@@ -402,9 +360,6 @@ def edge_width_for_weight(
 
     if weight <= 0:
         return base_width
-
-    if link_type == "normal_traffic":
-        return min(3.2, 0.55 + weight / 25)
 
     return min(base_width + 4.0, base_width + np.log1p(weight) / 2.5)
 
@@ -605,11 +560,14 @@ def edges_for_link_type(graph: nx.Graph, link_type: str) -> list[tuple[str, str]
 
 
 def unique_edges(windows: list[nx.Graph]) -> list[tuple[str, str]]:
-    """Return every unique edge observed in a list of graph windows."""
+    """Return every physical link that carried routed packets in any window."""
     edges = set()
 
     for graph in windows:
-        for source, target in graph.edges:
+        for source, target, attributes in graph.edges(data=True):
+            if attributes.get("weight", 0) <= 0:
+                continue
+
             edges.add(ordered_edge(source, target))
 
     return sorted(edges)
@@ -639,9 +597,12 @@ def animation_title(graph: nx.Graph, first_window: int, last_window: int) -> str
     window = graph.graph["window"]
     active_nodes = graph.number_of_nodes()
     active_edges = graph.number_of_edges()
+    flow_count = graph.graph.get("communication_flow_count", 0)
+    packet_count = graph.graph.get("communication_packet_count", 0)
 
     return (
         f"Dynamic Communication Network — Window {window:03d}/500 ({phase})\n"
         f"Showing windows {first_window}-{last_window} • "
-        f"{active_nodes} active nodes • {active_edges} active links"
+        f"{active_nodes} active nodes • {active_edges} physical links • "
+        f"{flow_count} routed flows / {packet_count} packets"
     )

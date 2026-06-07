@@ -18,7 +18,6 @@ from dgda.phases import TIMING_PHASES
 from dgda.topology import create_network, switch_ids_for_category
 from dgda.visualization import (
     animate_dynamic_graph_windows,
-    draw_connection_activity_heatmap,
     draw_network,
     draw_window_connection_matrix,
     select_window_range,
@@ -52,11 +51,6 @@ def parse_arguments() -> argparse.Namespace:
         "--snapshot-output",
         default="network_topology.png",
         help="PNG output path for the first selected window snapshot.",
-    )
-    parser.add_argument(
-        "--heatmap-output",
-        default="connection_activity_heatmap.png",
-        help="PNG output path for edge activity across the selected window range.",
     )
     parser.add_argument(
         "--matrix-output",
@@ -107,11 +101,15 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     phase_counts = Counter()
     node_counts = []
     edge_counts = []
+    flow_counts = []
+    packet_counts = []
 
     for graph in all_windows:
         phase_counts[graph.graph["phase"]] += 1
         node_counts.append(graph.number_of_nodes())
         edge_counts.append(graph.number_of_edges())
+        flow_counts.append(graph.graph.get("communication_flow_count", 0))
+        packet_counts.append(graph.graph.get("communication_packet_count", 0))
 
     print(f"Generated {len(all_windows)} dynamic graph windows.")
 
@@ -124,7 +122,9 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     print(
         "Dynamic snapshot range: "
         f"{min(node_counts)}-{max(node_counts)} active nodes, "
-        f"{min(edge_counts)}-{max(edge_counts)} active links."
+        f"{min(edge_counts)}-{max(edge_counts)} physical links, "
+        f"{min(flow_counts)}-{max(flow_counts)} routed flows, "
+        f"{min(packet_counts)}-{max(packet_counts)} packets."
     )
     print("Attack injection hook enabled only for windows 251-350.")
 
@@ -151,14 +151,6 @@ def main() -> None:
     print(f"Visualizing windows {args.start_window}-{args.end_window}.")
     draw_network(selected_windows[0], args.snapshot_output)
     print(f"Saved selected-range snapshot visualization to {args.snapshot_output}")
-
-    draw_connection_activity_heatmap(
-        dynamic_windows,
-        args.heatmap_output,
-        start_window=args.start_window,
-        end_window=args.end_window,
-    )
-    print(f"Saved connection activity heatmap to {args.heatmap_output}")
 
     draw_window_connection_matrix(matrix_windows[0], args.matrix_output)
     print(f"Saved window {matrix_window} connection matrix to {args.matrix_output}")
