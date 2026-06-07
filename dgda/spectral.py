@@ -175,8 +175,8 @@ def extract_spectral_features(
         fiedler_vector, baseline_fiedler_vector, sign_tolerance
     )
 
-    fiedler_value = _clean_eigenvalue(eigenvalues[1])
-    third_eigenvalue = _clean_eigenvalue(eigenvalues[2])
+    fiedler_value = float(eigenvalues[1])
+    third_eigenvalue = float(eigenvalues[2])
 
     return SpectralFeatures(
         window=window,

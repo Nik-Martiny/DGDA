@@ -1,6 +1,7 @@
 """Command-line interface for running the DGDA simulation."""
 
 import argparse
+import csv
 from collections import Counter
 from collections.abc import Iterable
 
@@ -164,6 +165,17 @@ def print_spectral_summary(analysis: SpectralAnalysis) -> None:
             f"||Delta L||={feature.laplacian_change_norm:.2f}, "
             f"cluster_changes={feature.cluster_changes}"
         )
+
+    rows = analysis.feature_records()
+
+    if not rows:
+        return
+
+    with open("spectral_analysis.csv", "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+
 
 
 def main() -> None:
