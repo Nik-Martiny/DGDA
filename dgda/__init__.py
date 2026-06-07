@@ -29,6 +29,16 @@ from dgda.config import (
 )
 from dgda.dynamics import create_dynamic_graph_windows, phase_for_window
 from dgda.phases import TIMING_PHASES, TimingPhase
+from dgda.spectral import (
+    LaplacianMatrices,
+    SpectralAnalysis,
+    SpectralFeatures,
+    analyze_spectral_features,
+    build_baseline_laplacian,
+    build_laplacian_matrices,
+    canonical_node_order,
+    extract_spectral_features,
+)
 from dgda.topology import create_network
 from dgda.visualization import (
     animate_dynamic_graph_windows,
@@ -61,6 +71,14 @@ __all__ = [
     "TOTAL_TIME_WINDOWS",
     "TRAFFIC_WEIGHT_RANGES",
     "TimingPhase",
+    "LaplacianMatrices",
+    "SpectralAnalysis",
+    "SpectralFeatures",
+    "analyze_spectral_features",
+    "build_baseline_laplacian",
+    "build_laplacian_matrices",
+    "canonical_node_order",
+    "extract_spectral_features",
     "animate_dynamic_graph_windows",
     "create_dynamic_graph_windows",
     "create_network",

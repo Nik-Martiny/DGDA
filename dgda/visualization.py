@@ -228,7 +228,9 @@ def animate_dynamic_graph_windows(
         blit=False,
         repeat=True,
     )
-    animation.save(output_path, writer=PillowWriter(fps=fps), dpi=dpi)
+
+    plt.show()
+
     plt.close(figure)
 
     return output_path

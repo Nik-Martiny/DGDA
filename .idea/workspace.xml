@@ -3,12 +3,9 @@
   <component name="ChangeListManager">
     <list default="true" id="d6cf4de7-591e-4a4d-a18b-31d201c0e464" name="Changes" comment="test">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dgda/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/dgda/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dgda/cli.py" beforeDir="false" afterPath="$PROJECT_DIR$/dgda/cli.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dgda/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/dgda/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dgda/dynamics.py" beforeDir="false" afterPath="$PROJECT_DIR$/dgda/dynamics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dgda/spectral.py" beforeDir="false" afterPath="$PROJECT_DIR$/dgda/spectral.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dgda/visualization.py" beforeDir="false" afterPath="$PROJECT_DIR$/dgda/visualization.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/network_topology.png" beforeDir="false" afterPath="$PROJECT_DIR$/network_topology.png" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -27,7 +24,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="master" />
+        <entry key="$PROJECT_DIR$" value="codex/refactor-network-edge-connections" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -52,17 +49,28 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.main.executor&quot;: &quot;Debug&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;#5 on codex/refactor-network-edge-connections&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python tests.Python tests in test_spectral.py.executor": "Debug",
+    "Python.main.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "#6 on codex/develop-stages-3-and-4-of-s…ework",
+    "ignore.virus.scanning.warn.message": "true",
+    "last_opened_file_path": "C:/Users/lyndo/PycharmProjects/DynGraphDetectionAlgorithm/dgda",
+    "settings.editor.selected.configurable": "database.data.views.appearance"
   }
-}</component>
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\lyndo\PycharmProjects\DynGraphDetectionAlgorithm\dgda" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\lyndo\PycharmProjects\DynGraphDetectionAlgorithm" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="DynGraphDetectionAlgorithm" />
@@ -79,7 +87,7 @@
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <option name="RUN_TOOL" value="" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
-      <option name="PARAMETERS" value="" />
+      <option name="PARAMETERS" value="--spectral-summary" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
       <option name="MODULE_MODE" value="false" />
@@ -132,7 +140,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780615155132</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="test">
+      <option name="closed" value="true" />
+      <created>1780845132209</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1780845132209</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

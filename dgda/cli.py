@@ -1,6 +1,7 @@
 """Command-line interface for running the DGDA simulation."""
 
 import argparse
+import csv
 from collections import Counter
 from collections.abc import Iterable
 
@@ -15,6 +16,7 @@ from dgda.config import (
 )
 from dgda.dynamics import create_dynamic_graph_windows
 from dgda.phases import TIMING_PHASES
+from dgda.spectral import SpectralAnalysis, analyze_spectral_features
 from dgda.topology import create_network, switch_ids_for_category
 from dgda.visualization import (
     animate_dynamic_graph_windows,
@@ -66,6 +68,11 @@ def parse_arguments() -> argparse.Namespace:
         "--skip-animation",
         action="store_true",
         help="Skip GIF rendering when you only need summaries and PNG files.",
+    )
+    parser.add_argument(
+        "--spectral-summary",
+        action="store_true",
+        help="Compute and print the Stage 3/4 baseline and five-feature summary.",
     )
 
     return parser.parse_args()
@@ -129,6 +136,48 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     print("Attack injection hook enabled only for windows 251-350.")
 
 
+def print_spectral_summary(analysis: SpectralAnalysis) -> None:
+    """Print a compact summary of the Stage 3/4 spectral analysis output."""
+    feature_count = len(analysis.features)
+    dimension = analysis.baseline_laplacian.shape[0]
+    change_norms = [feature.laplacian_change_norm for feature in analysis.features]
+    cluster_changes = [feature.cluster_changes for feature in analysis.features]
+
+    print("Stage 3/4 spectral analysis:")
+    print(
+        f"  Baseline Laplacian: {dimension}x{dimension} matrix "
+        "averaged from phase='baseline' windows."
+    )
+    print(f"  Feature table: {feature_count} windows x 5 spectral features.")
+    print(
+        "  ||Delta L|| range: "
+        f"{min(change_norms):.2f}-{max(change_norms):.2f}; "
+        f"cluster changes range: {min(cluster_changes)}-{max(cluster_changes)}."
+    )
+
+    print("  First three feature rows:")
+    for feature in analysis.features[:3]:
+        print(
+            f"    window {feature.window:03d} ({feature.phase}): "
+            f"lambda_2={feature.fiedler_value:.4f}, "
+            f"eigengap={feature.eigengap:.4f}, "
+            f"||v2||={feature.fiedler_vector_norm:.4f}, "
+            f"||Delta L||={feature.laplacian_change_norm:.2f}, "
+            f"cluster_changes={feature.cluster_changes}"
+        )
+
+    rows = analysis.feature_records()
+
+    if not rows:
+        return
+
+    with open("spectral_analysis.csv", "w", newline="") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+
 def main() -> None:
     """Run the full simulation from the command line."""
     args = parse_arguments()
@@ -137,6 +186,10 @@ def main() -> None:
 
     dynamic_windows = create_dynamic_graph_windows()
     print_dynamic_summary(dynamic_windows)
+
+    if args.spectral_summary:
+        spectral_analysis = analyze_spectral_features(dynamic_windows)
+        print_spectral_summary(spectral_analysis)
 
     selected_windows = select_window_range(
         dynamic_windows, args.start_window, args.end_window
