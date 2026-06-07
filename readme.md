@@ -236,3 +236,55 @@ draw_connection_activity_heatmap(
 )
 draw_window_connection_matrix(attack_windows[49], "window_300_matrix.png")
 ```
+
+## Stages 3 and 4: Laplacian matrices and spectral fingerprints
+
+The Stage 3 implementation converts each weighted dynamic window into three
+mathematical structures using one canonical node order across the full 200-device
+network:
+
+1. **Adjacency matrix `A`** — a symmetric 200x200 table where `A[i][j]` is the
+   accumulated routed packet weight between two connected physical devices during
+   that window. Undirected routed links are already symmetrized by the graph; if a
+   directed graph is supplied, opposite directions are added together.
+2. **Degree matrix `D`** — a diagonal 200x200 matrix where `D[i][i]` is the total
+   weighted traffic touching node `i`.
+3. **Laplacian matrix `L = D - A`** — diagonal entries preserve node activity,
+   off-diagonal entries are negative traffic weights, and each row sums to zero.
+
+The baseline Laplacian is the cell-by-cell average of all windows whose phase is
+`baseline` (windows 1-150 in the default timing layout). This gives later stages a
+single long-exposure view of normal routed network structure.
+
+Stage 4 then runs symmetric eigendecomposition with `numpy.linalg.eigh()` and
+compresses each window into exactly five features:
+
+* `lambda_2` — the Fiedler eigenvalue, measuring whole-network algebraic
+  connectivity.
+* `eigengap` — `lambda_3 - lambda_2`, measuring how sharply the graph separates
+  into two structural groups.
+* `fiedler_vector_norm` — the norm of `v2`; it is normally close to 1.0 but is
+  retained for theoretical completeness.
+* `laplacian_change_norm` — the Frobenius norm `||L_window - L_baseline||`, the
+  main total-structure-change signal.
+* `cluster_changes` — the number of nodes whose aligned Fiedler sign changed
+  relative to the baseline Fiedler vector. The implementation aligns eigenvector
+  orientation before counting because eigenvectors can be multiplied by -1 without
+  changing their mathematical meaning.
+
+Programmatic use:
+
+```python
+from main import analyze_spectral_features, create_dynamic_graph_windows
+
+windows = create_dynamic_graph_windows()
+analysis = analyze_spectral_features(windows)
+records = analysis.feature_records()  # 500 rows x 5 spectral features plus metadata
+print(records[0])
+```
+
+You can also ask the command line to compute a compact Stage 3/4 summary:
+
+```bash
+python main.py --skip-animation --spectral-summary
+```
