@@ -54,11 +54,11 @@ def create_dynamic_graph_windows(
         validate_window_snapshot(snapshot, phase)
         windows.append(snapshot)
 
-        #nodes = sorted(snapshot.nodes, key=lambda node: (snapshot.nodes[node]["category"], node))
+        nodes = sorted(snapshot.nodes, key=lambda node: (snapshot.nodes[node]["category"], node))
 
-        #lap_mat = laplacian_matrix(snapshot, nodelist=nodes, weight="weight").toarray()
+        lap_mat = laplacian_matrix(snapshot, nodelist=nodes, weight="weight").toarray()
 
-        #print(lap_mat)
+        print(lap_mat)
 
     return windows
 

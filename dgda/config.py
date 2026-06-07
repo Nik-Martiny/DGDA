@@ -95,10 +95,10 @@ ENDPOINT_PREFIXES = {
 }
 
 ENDPOINT_UP_PROBABILITIES = {
-    "client_workstation": 0.92,
+    "client_workstation": 1,
     "internal_server": 1,
     "web_edge_server": 1,
-    "iot_peripheral": 0.84,
+    "iot_peripheral": 1,
 }
 
 NORMAL_TRAFFIC_RULES = (

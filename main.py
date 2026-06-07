@@ -32,7 +32,6 @@ from dgda import (  # noqa: F401
     create_dynamic_graph_windows,
     create_network,
     create_stable_layout,
-    draw_connection_activity_heatmap,
     draw_network,
     draw_window_connection_matrix,
     phase_for_window,

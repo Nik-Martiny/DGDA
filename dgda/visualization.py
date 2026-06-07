@@ -233,52 +233,6 @@ def animate_dynamic_graph_windows(
 
     return output_path
 
-
-def draw_connection_activity_heatmap(
-    windows: Iterable[nx.Graph],
-    output_path: str | Path = "connection_activity_heatmap.png",
-    start_window: int | None = None,
-    end_window: int | None = None,
-) -> Path:
-    """Draw when each observed edge exists across the selected windows.
-
-    Rows are physical links that carried routed packets and columns are time
-    windows.  A filled cell means that at least one endpoint conversation used
-    that link in the window, making bursty routed traffic visible without adding
-    direct endpoint-to-endpoint edges.
-    """
-    selected_windows = select_window_range(windows, start_window, end_window)
-    output_path = Path(output_path)
-    observed_edges = unique_edges(selected_windows)
-    matrix = np.zeros((len(observed_edges), len(selected_windows)), dtype=int)
-
-    edge_to_row = {}
-    for row, edge in enumerate(observed_edges):
-        edge_to_row[edge] = row
-
-    for column, graph in enumerate(selected_windows):
-        for source, target, attributes in graph.edges(data=True):
-            if attributes.get("weight", 0) <= 0:
-                continue
-
-            edge = ordered_edge(source, target)
-            row = edge_to_row[edge]
-            matrix[row, column] = 1
-
-    figure_height = max(6, min(24, len(observed_edges) * 0.08))
-    figure, axis = plt.subplots(figsize=(16, figure_height))
-    axis.imshow(matrix, aspect="auto", interpolation="nearest", cmap="Blues")
-    axis.set_title("Routed Packet Activity Across Dynamic Graph Windows")
-    axis.set_xlabel("Selected window index")
-    axis.set_ylabel("Observed edge")
-    axis.set_yticks([])
-    figure.tight_layout()
-    figure.savefig(output_path, dpi=180)
-    plt.close(figure)
-
-    return output_path
-
-
 def draw_window_connection_matrix(
     graph: nx.Graph,
     output_path: str | Path = "window_connection_matrix.png",

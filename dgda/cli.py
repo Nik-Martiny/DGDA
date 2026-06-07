@@ -18,7 +18,6 @@ from dgda.phases import TIMING_PHASES
 from dgda.topology import create_network, switch_ids_for_category
 from dgda.visualization import (
     animate_dynamic_graph_windows,
-    draw_connection_activity_heatmap,
     draw_network,
     draw_window_connection_matrix,
     select_window_range,
@@ -52,11 +51,6 @@ def parse_arguments() -> argparse.Namespace:
         "--snapshot-output",
         default="network_topology.png",
         help="PNG output path for the first selected window snapshot.",
-    )
-    parser.add_argument(
-        "--heatmap-output",
-        default="connection_activity_heatmap.png",
-        help="PNG output path for edge activity across the selected window range.",
     )
     parser.add_argument(
         "--matrix-output",
@@ -157,14 +151,6 @@ def main() -> None:
     print(f"Visualizing windows {args.start_window}-{args.end_window}.")
     draw_network(selected_windows[0], args.snapshot_output)
     print(f"Saved selected-range snapshot visualization to {args.snapshot_output}")
-
-    draw_connection_activity_heatmap(
-        dynamic_windows,
-        args.heatmap_output,
-        start_window=args.start_window,
-        end_window=args.end_window,
-    )
-    print(f"Saved connection activity heatmap to {args.heatmap_output}")
 
     draw_window_connection_matrix(matrix_windows[0], args.matrix_output)
     print(f"Saved window {matrix_window} connection matrix to {args.matrix_output}")
