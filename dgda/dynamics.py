@@ -5,6 +5,7 @@ from collections.abc import Callable
 import networkx as nx
 import numpy as np
 
+from dgda.attacks import inject_scheduled_attacks
 from dgda.config import (
     DEVICE_COUNTS,
     EDGE_WEIGHT_UNIT,
@@ -24,15 +25,16 @@ AttackInjector = Callable[[nx.Graph, np.random.Generator, TimingPhase], None]
 def create_dynamic_graph_windows(
     seed: int = RNG_SEED,
     total_windows: int = TOTAL_TIME_WINDOWS,
-    attack_injector: AttackInjector | None = None,
+    attack_injector: AttackInjector | None = inject_scheduled_attacks,
 ) -> list[nx.Graph]:
     """Create all time-window snapshots for the simulation.
 
     Each returned graph represents one discrete moment in time.  The router and
     switch layer remains stable, endpoint devices randomly appear or disappear,
     and normal communication edges are regenerated for that single window.  The
-    optional attack callback only runs during windows 251-350, which protects the
-    normal baseline and recovery periods from accidental attack traffic.
+    attack callback only runs during windows 251-350, which protects the normal
+    baseline and recovery periods from accidental attack traffic.  By default, the
+    four built-in attacks are injected in order; pass ``None`` to disable them.
     """
     validate_timing_phases(total_windows)
 
@@ -313,6 +315,7 @@ def validate_window_snapshot(graph: nx.Graph, phase: TimingPhase) -> None:
             direct_endpoint_edges.append((source, target, link_type))
 
     validate_communication_flows(graph)
+    validate_attack_flows(graph)
 
     if unexpected_edges and not phase.attack_injection_allowed:
         raise ValueError(
@@ -355,7 +358,9 @@ def validate_communication_flows(graph: nx.Graph) -> None:
             raise ValueError(f"Flow references inactive nodes: {flow}")
 
         if graph.has_edge(source, target):
-            raise ValueError(f"Flow was also modeled as a direct graph edge: {flow}")
+            direct_link_type = graph.edges[source, target].get("link_type")
+            if direct_link_type != "attack_virtual":
+                raise ValueError(f"Flow was also modeled as a direct graph edge: {flow}")
 
         if not isinstance(packet_count, int) or packet_count <= 0:
             raise ValueError(f"Flow has invalid packet count: {flow}")
@@ -372,4 +377,38 @@ def validate_communication_flows(graph: nx.Graph) -> None:
     if graph.graph.get("communication_packet_count", packet_total) != packet_total:
         raise ValueError(
             f"Packet-count metadata does not match in window {graph.graph['window']}."
+        )
+
+
+def validate_attack_flows(graph: nx.Graph) -> None:
+    """Validate attack-only virtual flow metadata and aggregate packet counts."""
+    flows = graph.graph.get("attack_flows", [])
+    packet_total = 0
+
+    if graph.graph.get("attack_flow_count", len(flows)) != len(flows):
+        raise ValueError(
+            f"Attack-flow-count metadata does not match in window {graph.graph['window']}."
+        )
+
+    for flow in flows:
+        path = list(flow.get("path", ()))
+        packet_count = flow.get("packet_count")
+
+        if path[:1] != [flow.get("source")] or path[-1:] != [flow.get("target")]:
+            raise ValueError(f"Attack flow path endpoints do not match: {flow}")
+
+        if not isinstance(packet_count, int) or packet_count <= 0:
+            raise ValueError(f"Attack flow has invalid packet count: {flow}")
+
+        for left, right in zip(path[:-1], path[1:], strict=True):
+            if not graph.has_edge(left, right):
+                raise ValueError(f"Attack flow path uses a missing edge: {flow}")
+            if graph.edges[left, right].get("link_type") != "attack_virtual":
+                raise ValueError(f"Attack flow path uses a non-attack edge: {flow}")
+
+        packet_total += packet_count
+
+    if graph.graph.get("attack_packet_count", packet_total) != packet_total:
+        raise ValueError(
+            f"Attack-packet-count metadata does not match in window {graph.graph['window']}."
         )

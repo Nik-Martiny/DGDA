@@ -7,6 +7,8 @@ create_network`` working while the codebase stays split by responsibility.
 
 from dgda import (  # noqa: F401
     ANIMATION_FPS,
+    ATTACK_STAGES,
+    AttackStage,
     ANIMATION_INTERVAL_MS,
     CATEGORY_COLORS,
     CATEGORY_DISPLAY_NAMES,
@@ -42,6 +44,7 @@ from dgda import (  # noqa: F401
     draw_network,
     draw_window_connection_matrix,
     extract_spectral_features,
+    inject_scheduled_attacks,
     phase_for_window,
     select_window_range,
 )

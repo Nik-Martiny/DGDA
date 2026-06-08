@@ -5,6 +5,7 @@ time: configuration constants, timing phases, topology building, dynamic window
 creation, visualization, and command-line behavior.
 """
 
+from dgda.attacks import ATTACK_STAGES, AttackStage, inject_scheduled_attacks
 from dgda.config import (
     ANIMATION_FPS,
     ANIMATION_INTERVAL_MS,
@@ -50,6 +51,8 @@ from dgda.visualization import (
 
 __all__ = [
     "ANIMATION_FPS",
+    "ATTACK_STAGES",
+    "AttackStage",
     "ANIMATION_INTERVAL_MS",
     "CATEGORY_COLORS",
     "CATEGORY_DISPLAY_NAMES",
@@ -79,6 +82,7 @@ __all__ = [
     "build_laplacian_matrices",
     "canonical_node_order",
     "extract_spectral_features",
+    "inject_scheduled_attacks",
     "animate_dynamic_graph_windows",
     "create_dynamic_graph_windows",
     "create_network",
