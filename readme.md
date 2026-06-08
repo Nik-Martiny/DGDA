@@ -104,11 +104,11 @@ The timing layout is:
   algorithms can learn normal graph behavior.
 * **Windows 151-250: pre-attack phase** — normal traffic only for validating false
   alarms and calibrating CUSUM/Page-Hinkley thresholds.
-* **Windows 251-350: attack phase** — normal traffic plus a reserved attack
-  injection hook. No concrete attacks are injected yet, but each snapshot is
-  marked with attack-phase ground-truth metadata so future attack mutators can add
-  malicious nodes/edges and detectors can be evaluated against the expected alarm
-  interval.
+* **Windows 251-350: attack phase** — normal traffic plus four ordered attacks:
+  DDoS (251-275), Botnet C2 (276-300), MITM (301-325), and port scanning
+  (326-350). Each snapshot records attack ground-truth metadata and accumulates
+  attack packets along the existing physical routes for spectral and topology
+  detectors.
 * **Windows 351-500: recovery phase** — normal traffic returns, enabling detector
   signal recovery checks and false-positive measurement.
 
@@ -123,10 +123,20 @@ print(attack_window.graph["phase"])
 print(attack_window.graph["ground_truth_label"])
 ```
 
-Future attack implementations can pass an `attack_injector` callback to
-`create_dynamic_graph_windows()`. The callback is invoked only for windows 251-350,
-which prevents attack traffic from leaking into the baseline, pre-attack, or
-recovery phases.
+The built-in ordered attack injector runs by default. Call
+`create_dynamic_graph_windows(attack_injector=None)` for a normal-only simulation,
+or pass a custom `attack_injector` callback. Any callback is invoked only for
+windows 251-350, preventing attack traffic from leaking into the baseline,
+pre-attack, or recovery phases.
+
+Attack snapshots include `attack_name`, `attack_flows`, `attack_flow_count`, and
+`attack_packet_count` graph metadata. Like normal conversations, attack flows do
+not create direct endpoint-to-endpoint edges: packet counts accumulate on every
+existing access, switch/router, and backbone hop in the recorded physical path.
+DDoS routes 30 heavy client floods to one web/edge server; Botnet C2 routes a
+ten-IoT logical core through the network; MITM forces client-to-internal-server
+traffic through router D; and port scanning routes sixty rotating five-packet
+probes from one client.
 
 ## Routed packet flows
 

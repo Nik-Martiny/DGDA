@@ -110,6 +110,7 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
     edge_counts = []
     flow_counts = []
     packet_counts = []
+    attack_counts = Counter()
 
     for graph in all_windows:
         phase_counts[graph.graph["phase"]] += 1
@@ -117,6 +118,8 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
         edge_counts.append(graph.number_of_edges())
         flow_counts.append(graph.graph.get("communication_flow_count", 0))
         packet_counts.append(graph.graph.get("communication_packet_count", 0))
+        if graph.graph.get("attack_name"):
+            attack_counts[graph.graph["attack_name"]] += 1
 
     print(f"Generated {len(all_windows)} dynamic graph windows.")
 
@@ -133,7 +136,13 @@ def print_dynamic_summary(windows: Iterable[nx.Graph]) -> None:
         f"{min(flow_counts)}-{max(flow_counts)} routed flows, "
         f"{min(packet_counts)}-{max(packet_counts)} packets."
     )
-    print("Attack injection hook enabled only for windows 251-350.")
+    if attack_counts:
+        attack_summary = ", ".join(
+            f"{name}: {count} windows" for name, count in attack_counts.items()
+        )
+        print(f"Injected attacks: {attack_summary}.")
+    else:
+        print("Attack injection disabled; windows 251-350 contain normal traffic only.")
 
 
 def print_spectral_summary(analysis: SpectralAnalysis) -> None:
