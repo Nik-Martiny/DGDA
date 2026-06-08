@@ -17,6 +17,7 @@ from dgda.config import (
     TRAFFIC_WEIGHT_RANGES,
 )
 from dgda.phases import TIMING_PHASES, TimingPhase
+from dgda.routing import apply_traffic_weight_to_path, shortest_physical_path
 from dgda.topology import create_network
 
 AttackInjector = Callable[[nx.Graph, np.random.Generator, TimingPhase], None]
@@ -221,33 +222,12 @@ def reset_physical_edge_weights(graph: nx.Graph) -> None:
         attributes["weight_unit"] = EDGE_WEIGHT_UNIT
 
 
-def shortest_physical_path(graph: nx.Graph, source: str, target: str) -> list[str]:
-    """Return the best physical path between endpoints through infrastructure."""
-    physical_view = nx.subgraph_view(
-        graph,
-        filter_edge=lambda left, right: graph.edges[left, right].get("link_type")
-        != "normal_traffic",
-    )
-
-    return nx.shortest_path(physical_view, source, target)
-
-
 def ordered_flow_key(source: str, target: str, traffic_label: str) -> tuple[str, str, str]:
     """Return a stable key for one undirected endpoint conversation."""
     if source <= target:
         return (source, target, traffic_label)
 
     return (target, source, traffic_label)
-
-
-def apply_traffic_weight_to_path(
-    graph: nx.Graph, physical_path: list[str], weight: int
-) -> None:
-    """Add one endpoint conversation's weight to every physical hop it uses."""
-    for source, target in zip(physical_path[:-1], physical_path[1:], strict=True):
-        attributes = graph.edges[source, target]
-        attributes["weight"] += weight
-        attributes["weight_unit"] = EDGE_WEIGHT_UNIT
 
 
 def sample_traffic_weight(traffic_label: str, rng: np.random.Generator) -> int:
@@ -358,9 +338,7 @@ def validate_communication_flows(graph: nx.Graph) -> None:
             raise ValueError(f"Flow references inactive nodes: {flow}")
 
         if graph.has_edge(source, target):
-            direct_link_type = graph.edges[source, target].get("link_type")
-            if direct_link_type != "attack_virtual":
-                raise ValueError(f"Flow was also modeled as a direct graph edge: {flow}")
+            raise ValueError(f"Flow was also modeled as a direct graph edge: {flow}")
 
         if not isinstance(packet_count, int) or packet_count <= 0:
             raise ValueError(f"Flow has invalid packet count: {flow}")
@@ -381,7 +359,7 @@ def validate_communication_flows(graph: nx.Graph) -> None:
 
 
 def validate_attack_flows(graph: nx.Graph) -> None:
-    """Validate attack-only virtual flow metadata and aggregate packet counts."""
+    """Validate routed attack-flow metadata and aggregate packet counts."""
     flows = graph.graph.get("attack_flows", [])
     packet_total = 0
 
@@ -403,8 +381,12 @@ def validate_attack_flows(graph: nx.Graph) -> None:
         for left, right in zip(path[:-1], path[1:], strict=True):
             if not graph.has_edge(left, right):
                 raise ValueError(f"Attack flow path uses a missing edge: {flow}")
-            if graph.edges[left, right].get("link_type") != "attack_virtual":
-                raise ValueError(f"Attack flow path uses a non-attack edge: {flow}")
+            if graph.edges[left, right].get("link_type") not in {
+                "access",
+                "router_to_switch",
+                "router_backbone",
+            }:
+                raise ValueError(f"Attack flow path uses a non-physical edge: {flow}")
 
         packet_total += packet_count
 

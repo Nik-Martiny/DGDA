@@ -106,8 +106,9 @@ The timing layout is:
   alarms and calibrating CUSUM/Page-Hinkley thresholds.
 * **Windows 251-350: attack phase** — normal traffic plus four ordered attacks:
   DDoS (251-275), Botnet C2 (276-300), MITM (301-325), and port scanning
-  (326-350). Each snapshot records attack ground-truth metadata and exposes the
-  attack as short-lived virtual graph edges for spectral and topology detectors.
+  (326-350). Each snapshot records attack ground-truth metadata and accumulates
+  attack packets along the existing physical routes for spectral and topology
+  detectors.
 * **Windows 351-500: recovery phase** — normal traffic returns, enabling detector
   signal recovery checks and false-positive measurement.
 
@@ -129,10 +130,13 @@ windows 251-350, preventing attack traffic from leaking into the baseline,
 pre-attack, or recovery phases.
 
 Attack snapshots include `attack_name`, `attack_flows`, `attack_flow_count`, and
-`attack_packet_count` graph metadata. DDoS creates a 30-client heavy star around
-one web/edge server; Botnet C2 creates a ten-IoT dense core around one internal
-server; MITM places router D between client and internal-server virtual traffic;
-and port scanning creates sixty rotating five-packet probe edges from one client.
+`attack_packet_count` graph metadata. Like normal conversations, attack flows do
+not create direct endpoint-to-endpoint edges: packet counts accumulate on every
+existing access, switch/router, and backbone hop in the recorded physical path.
+DDoS routes 30 heavy client floods to one web/edge server; Botnet C2 routes a
+ten-IoT logical core through the network; MITM forces client-to-internal-server
+traffic through router D; and port scanning routes sixty rotating five-packet
+probes from one client.
 
 ## Routed packet flows
 

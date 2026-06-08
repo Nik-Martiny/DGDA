@@ -64,21 +64,18 @@ LINK_TYPE_COLORS = {
     "router_backbone": "#1F2937",
     "router_to_switch": "#6B7280",
     "access": "#D1D5DB",
-    "attack_virtual": "#DC2626",
 }
 
 LINK_TYPE_WIDTHS = {
     "router_backbone": 2.8,
     "router_to_switch": 1.8,
     "access": 0.55,
-    "attack_virtual": 2.4,
 }
 
 LINK_TYPE_ALPHAS = {
     "router_backbone": 0.9,
     "router_to_switch": 0.65,
     "access": 0.24,
-    "attack_virtual": 0.82,
 }
 
 ENDPOINT_CATEGORIES = (

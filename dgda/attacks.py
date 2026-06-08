@@ -1,9 +1,9 @@
 """Scheduled attack traffic for the dynamic graph simulation.
 
-Attack edges are intentionally represented as short-lived virtual communication
-links.  Normal traffic continues to use the physical routed topology, while the
-virtual links make the topology changes caused by each attack directly visible
-to graph and spectral detectors.
+Attacks use the same routing model as normal conversations: each logical flow is
+stored as graph metadata and its packet count is accumulated on every existing
+physical hop along the selected route.  Attack injection never adds direct edges
+between an attacker and a victim.
 """
 
 from collections.abc import Callable
@@ -12,8 +12,12 @@ from dataclasses import dataclass
 import networkx as nx
 import numpy as np
 
-from dgda.config import EDGE_WEIGHT_UNIT
 from dgda.phases import TimingPhase
+from dgda.routing import (
+    apply_traffic_weight_to_path,
+    physical_path_via,
+    shortest_physical_path,
+)
 
 
 @dataclass(frozen=True)
@@ -31,34 +35,34 @@ class AttackStage:
 
 
 def inject_ddos(graph: nx.Graph, rng: np.random.Generator) -> None:
-    """Create a 30-client, one-web-server heavy flooding star."""
+    """Route floods from thirty clients to one web/edge server."""
     attackers = _category_nodes(graph, "client_workstation")[:30]
     target = _category_nodes(graph, "web_edge_server")[0]
 
     for attacker in attackers:
         packet_count = int(rng.integers(500, 751))
-        _add_attack_flow(graph, attacker, target, packet_count, "ddos")
+        _route_attack_flow(graph, attacker, target, packet_count, "ddos")
 
 
 def inject_botnet_c2(graph: nx.Graph, rng: np.random.Generator) -> None:
-    """Create a dense ten-IoT botnet core around one internal C2 server."""
+    """Route a dense logical ten-IoT botnet core through the physical network."""
     bots = _category_nodes(graph, "iot_peripheral")[:10]
     c2_server = _category_nodes(graph, "internal_server")[0]
 
     for bot in bots:
         packet_count = int(rng.integers(300, 501))
-        _add_attack_flow(graph, bot, c2_server, packet_count, "botnet_c2")
+        _route_attack_flow(graph, bot, c2_server, packet_count, "botnet_c2")
 
-    # The peer coordination links turn the otherwise star-shaped C2 traffic into
-    # a high-k core that can be localized by a k-core detector.
+    # Preserve the logical peer coordination needed by flow-level k-core
+    # detectors, while routing all of those conversations over physical links.
     for index, source in enumerate(bots):
         for target in bots[index + 1 :]:
             packet_count = int(rng.integers(80, 161))
-            _add_attack_flow(graph, source, target, packet_count, "botnet_peer")
+            _route_attack_flow(graph, source, target, packet_count, "botnet_peer")
 
 
 def inject_mitm(graph: nx.Graph, rng: np.random.Generator) -> None:
-    """Route heavy Group-A-to-Group-B virtual traffic through router D."""
+    """Force heavy client-to-server traffic through rogue physical router D."""
     rogue_router = "router_D"
     clients = _category_nodes(graph, "client_workstation")[:30]
     servers = _category_nodes(graph, "internal_server")[:20]
@@ -66,21 +70,18 @@ def inject_mitm(graph: nx.Graph, rng: np.random.Generator) -> None:
     for index, source in enumerate(clients):
         target = servers[index % len(servers)]
         packet_count = int(rng.integers(250, 451))
-        _add_attack_path(graph, source, target, rogue_router, packet_count)
+        path = physical_path_via(graph, source, rogue_router, target)
+        _route_attack_flow(graph, source, target, packet_count, "mitm", path)
 
 
 def inject_port_scan(graph: nx.Graph, rng: np.random.Generator) -> None:
-    """Add sixty five-packet probes from one client to rotating random nodes."""
+    """Route sixty five-packet probes from one client to rotating random nodes."""
     attacker = _category_nodes(graph, "client_workstation")[-1]
-    candidates = sorted(
-        node
-        for node in graph
-        if node != attacker and not graph.has_edge(attacker, node)
-    )
+    candidates = sorted(node for node in graph if node != attacker)
     targets = rng.choice(candidates, size=60, replace=False)
 
     for target in targets:
-        _add_attack_flow(graph, attacker, str(target), 5, "port_scan")
+        _route_attack_flow(graph, attacker, str(target), 5, "port_scan")
 
 
 def inject_scheduled_attacks(
@@ -89,9 +90,9 @@ def inject_scheduled_attacks(
     """Inject the attack assigned to this window of the attack phase.
 
     The four attacks divide the 100-window attack phase into equal, ordered
-    intervals.  Actor selection is stable for DDoS, botnet, and MITM so their
-    structures persist long enough for detectors to observe them.  Port-scan
-    targets rotate each window to produce many short-lived probe edges.
+    intervals. Actor selection is stable for DDoS, botnet, and MITM so their
+    routed traffic patterns persist long enough for detectors to observe them.
+    Port-scan targets rotate each window to produce short-lived probe flows.
     """
     if not phase.attack_injection_allowed:
         raise ValueError(f"Cannot inject attacks during the {phase.name} phase.")
@@ -118,86 +119,28 @@ def _category_nodes(graph: nx.Graph, category: str) -> list[str]:
     )
 
 
-def _add_attack_flow(
+def _route_attack_flow(
     graph: nx.Graph,
     source: str,
     target: str,
     packet_count: int,
     attack_type: str,
+    path: list[str] | None = None,
 ) -> None:
-    """Add one virtual attack edge and its graph-level flow record."""
-    if graph.has_edge(source, target):
-        attributes = graph.edges[source, target]
-        if attributes.get("link_type") != "attack_virtual":
-            raise ValueError(f"Attack edge would overwrite physical link {(source, target)}.")
-        attributes["weight"] += packet_count
-    else:
-        graph.add_edge(
-            source,
-            target,
-            link_type="attack_virtual",
-            attack_type=attack_type,
-            weight=packet_count,
-            weight_unit=EDGE_WEIGHT_UNIT,
-        )
+    """Record one logical attack flow and add its weight to physical hops."""
+    if path is None:
+        path = shortest_physical_path(graph, source, target)
 
+    apply_traffic_weight_to_path(graph, path, packet_count)
     graph.graph.setdefault("attack_flows", []).append(
         {
             "source": source,
             "target": target,
             "attack_type": attack_type,
             "packet_count": packet_count,
-            "path": (source, target),
+            "path": tuple(path),
             "window": graph.graph["window"],
         }
-    )
-
-
-def _add_attack_path(
-    graph: nx.Graph,
-    source: str,
-    target: str,
-    rogue_router: str,
-    packet_count: int,
-) -> None:
-    """Add one source-router-target MITM path and one logical flow record."""
-    _add_attack_edge(graph, source, rogue_router, packet_count, "mitm")
-    _add_attack_edge(graph, rogue_router, target, packet_count, "mitm")
-    graph.graph.setdefault("attack_flows", []).append(
-        {
-            "source": source,
-            "target": target,
-            "attack_type": "mitm",
-            "packet_count": packet_count,
-            "path": (source, rogue_router, target),
-            "interceptor": rogue_router,
-            "window": graph.graph["window"],
-        }
-    )
-
-
-def _add_attack_edge(
-    graph: nx.Graph,
-    source: str,
-    target: str,
-    packet_count: int,
-    attack_type: str,
-) -> None:
-    """Add or accumulate one virtual edge without creating a flow record."""
-    if graph.has_edge(source, target):
-        attributes = graph.edges[source, target]
-        if attributes.get("link_type") != "attack_virtual":
-            raise ValueError(f"Attack edge would overwrite physical link {(source, target)}.")
-        attributes["weight"] += packet_count
-        return
-
-    graph.add_edge(
-        source,
-        target,
-        link_type="attack_virtual",
-        attack_type=attack_type,
-        weight=packet_count,
-        weight_unit=EDGE_WEIGHT_UNIT,
     )
 
 
